@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design tokens — "stadium at night": deep base, pitch green, gold accent,
+   plus the multicolour stripe that nods to the FWC 2026 multicolour "26".
+   (Full theme is applied across the UI in Phases 2–3.)
+--------------------------------------------------------------------------- */
+:root {
+  --pitch-950: #06140c;   /* near-black green, page base */
+  --pitch-900: #0a2316;   /* panel base */
+  --pitch-800: #0f3320;   /* raised panel */
+  --pitch-line: #1f5236;  /* hairline / pitch markings */
+  --pitch-500: #1fa463;   /* live green */
+  --gold-400:  #f3c969;   /* primary accent */
+  --gold-300:  #ffd97a;
+  --chalk:     #f3f6f1;   /* primary text */
+  --chalk-dim: #9fb3a6;   /* secondary text */
+
+  /* multicolour signature (the "26" energy) */
+  --m1: #00b4d8; --m2: #ffd166; --m3: #ef476f; --m4: #06d6a0; --m5: #8a5cf6;
+}
+
+* { box-sizing: border-box; }
+
+html, body { padding: 0; margin: 0; }
+
+body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(31,164,99,0.14), transparent 60%),
+    var(--pitch-950);
+  color: var(--chalk);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+.display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* The signature: a thin multicolour bar used on key edges. */
+.stripe-26 {
+  height: 4px;
+  background: linear-gradient(90deg,
+    var(--m1) 0 20%, var(--m2) 20% 40%, var(--m3) 40% 60%,
+    var(--m4) 60% 80%, var(--m5) 80% 100%);
+}
+
+/* Reduced-motion + focus floor (quality baseline). */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+:focus-visible { outline: 2px solid var(--gold-400); outline-offset: 2px; }
