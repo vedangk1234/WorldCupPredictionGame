@@ -44,7 +44,7 @@ export interface MatchGoal {
   id: number;
   match_id: number;
   player_id: number;
-  count: number;
+  minute: string | null;
   is_own_goal: boolean;
 }
 
@@ -79,6 +79,15 @@ export interface PredictionPoints {
   got_exact: boolean;
   correct_scorers: number;
   got_underdog: boolean;
+}
+
+// One goal as entered in the admin result form (one row per goal). On save each
+// entry becomes one row in match_goals { match_id, player_id, minute, is_own_goal }.
+// `minute` is persisted for display only and does NOT affect scoring.
+export interface GoalEntry {
+  player_id: number;
+  minute: string;
+  is_own_goal: boolean;
 }
 
 export interface LeaderboardRow {

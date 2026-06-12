@@ -46,7 +46,8 @@ matches are always "Team A vs Team B", shown by name only.
 | Predicted a draw, wrong score (e.g. predict 1–1, actual 2–2) | **1** (GD 0 matches) |
 | Predicted a winner | **0** |
 
-- **Winner (+3):** correct side wins, OR you called a draw and it drew.
+- **Winner (+3):** awarded ONLY in a decisive match when you predicted the
+  correct winning side. A draw never awards the winner point.
 - **Goal difference / margin (+1):** awarded only if the winner is also correct
   AND the exact winning margin matches. (SK 2–1 ↔ predict 3–2 → both margin 1 → +1.)
   For a draw, the margin is 0, so any correct-draw prediction earns this +1.
@@ -133,7 +134,9 @@ Defined in `supabase/schema.sql`. Summary:
 - **matches** — `team_a_id`, `team_b_id`, `group_letter`, `matchday`, `kickoff_at`,
   `predictions_close_at`, `underdog_team_id`, `score_a`, `score_b`, `finished`.
   (`team_a`/`team_b` carry **no** home/away meaning; just two slots.)
-- **match_goals** — actual scorers: `match_id`, `player_id`, `count`, `is_own_goal`.
+- **match_goals** — actual scorers, **one row per goal** (a brace = two rows):
+  `match_id`, `player_id`, `minute` (text, display-only — does NOT affect scoring),
+  `is_own_goal`.
 - **predictions** — `user_id`, `match_id`, `score_a`, `score_b`, `locked`,
   `locked_at`. Unique on (`user_id`, `match_id`).
 - **prediction_scorers** — `prediction_id`, `player_id`.
@@ -205,3 +208,50 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
 - **Phase 1 (initial):** Project scaffold (Next.js + TS + Tailwind + Supabase SSR
   client), full `supabase/schema.sql` with RLS, `CLAUDE.md`, `SETUP.md`, placeholder
   landing page that verifies the Supabase connection. No app features yet.
+- **Phase 2 (seed data):** Added `scripts/build-seed.mjs` (Node 18+, no deps) that
+  fetches the public-domain openfootball/worldcup.json 2026 dataset and generates
+  `supabase/seed.sql` — **48 teams, 1245 players, 72 group-stage fixtures**. Kickoff
+  times are converted from their local UTC offset to UTC; close time = kickoff − 5 min.
+  Rows join to teams by name (id-independent) and are deterministically ordered.
+  Run the SQL in the Supabase SQL Editor after `schema.sql`. Re-runnable.
+- **Phase 2 (scoring engine):** Added `lib/scoring.ts` — a single pure function
+  `scorePrediction(ScoringInput): ScoringResult` implementing section 2 exactly
+  (winner / GD / exact / scorers-with-own-goal-netting / underdog, no clamping,
+  no I/O). Added `scripts/test-scoring.ts` (run via `npm run test:scoring`, `tsx`
+  devDependency) — a 16-case self-verifying suite covering decisive/draw/exact,
+  scorer braces, own-goal penalties and netting, and underdog wins; all 16 pass.
+  Also fixed a stale section 2.1 bullet that wrongly said a draw awards the winner
+  point (it never does).
+- **Phase 2 (admin panel — complete):** Added the admin-only area under `app/admin`.
+  `lib/auth.ts → requireAdmin()` loads the user server-side, checks `profiles.is_admin`,
+  and redirects to `/` otherwise; every admin page and every write calls it first
+  (client never trusted). `lib/format.ts → fmtIST/fmtISTTime` render all times in IST
+  (Asia/Kolkata). `/admin` lists all 72 matches grouped A–L with IST kickoff/close times
+  and a server-computed state badge — **Open** / **Locked · awaiting result** / **Finished**
+  (finished rows dimmed) — plus an underdog indicator and final score. `/admin/match/[id]`
+  has the underdog control (Team A / Team B / none) and a result-entry form: score inputs,
+  one-row-per-goal scorers (player dropdown grouped by team + shirt #, minute note, own-goal
+  checkbox) with a soft "goals ≠ score" warning. Server actions in `app/admin/actions.ts`:
+  `setUnderdog`, `saveResult` (draft — upserts score, replaces `match_goals`), `finishMatch`
+  (sets finished + recomputes), and `recomputePoints` (recompute without re-finishing). The
+  recompute deletes `prediction_points` for the match then re-runs `scorePrediction` over
+  every prediction and re-inserts (idempotent). **Unlocked predictions are skipped** (an
+  unlocked prediction = the user is out of that match, per 2.4) — only `locked = true` rows
+  get a points row. Notes/limitations: goals are stored **aggregated** by
+  `(player_id, is_own_goal)` into `match_goals.count` (the schema is unique on that triple),
+  and the per-goal **minute is UI-only / not persisted** — the schema has no minute column
+  and was not changed. Set `tsconfig` `target: es2017` so the `Set`/`Map` spreads in the
+  (unchanged) scoring engine compile under Next's build.
+- **Phase 2 (match_goals migration — applied):** Reshaped `match_goals` from an
+  aggregated `count` column + `unique(match_id, player_id, is_own_goal)` to **one row
+  per goal** with a persisted `minute text` (display-only — does NOT affect scoring) and
+  a `created_at`; dropped the `count`/unique constraint. Safe because no predictions or
+  results existed yet. Updated `supabase/schema.sql` (and the root duplicate `schema.sql`),
+  `lib/types.ts` (`MatchGoal.count` → `minute: string | null`), the admin match page (loads
+  rows directly, prefilling each goal's minute) and `saveResult` (deletes then inserts one
+  `{match_id, player_id, minute, is_own_goal}` row per goal — empty minute stored as null).
+  The recompute now maps each row straight to `{playerId, isOwnGoal}`, so a player's two
+  rows = two goals and **points are unchanged** (scoring engine untouched; all 16 tests
+  pass). `ResultForm` relabels the minute input as a normal "Minute (optional)" field.
+  RLS policies on `match_goals` were left as-is. **Re-run** `supabase/schema.sql` then
+  `supabase/seed.sql` in Supabase to apply (drops & recreates — fine, no game data yet).

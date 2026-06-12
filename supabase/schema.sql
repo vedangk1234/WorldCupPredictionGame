@@ -114,15 +114,17 @@ create index matches_kickoff_idx on public.matches(kickoff_at);
 -- =============================================================================
 -- MATCH_GOALS   (actual scorers entered by admin)
 --   For an own goal, player_id is the OPPOSING player; the goal counts for the
---   team that benefited. is_own_goal flags it; one row per (player, own-goal flag).
+--   team that benefited. is_own_goal flags it.
 -- =============================================================================
+-- One row PER GOAL. A brace = two rows. Scoring counts rows per player;
+-- `minute` is recorded for display only and does NOT affect points.
 create table public.match_goals (
   id           bigint generated always as identity primary key,
   match_id     bigint not null references public.matches(id) on delete cascade,
   player_id    bigint not null references public.players(id),
-  count        int not null default 1 check (count >= 1),
+  minute       text,                       -- e.g. '23', '45+2', '90+4'
   is_own_goal  boolean not null default false,
-  unique (match_id, player_id, is_own_goal)
+  created_at   timestamptz not null default now()
 );
 create index match_goals_match_idx on public.match_goals(match_id);
 
