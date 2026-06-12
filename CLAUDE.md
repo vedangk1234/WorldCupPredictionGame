@@ -412,3 +412,28 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   add/remove, dedupe, score-change trimming, own-goal/minute handling, and saving `player_id` are
   all unchanged — purely the option list's grouping/order. `npm run build` clean and all 16
   scoring tests pass.
+- **Bug fix: scorer dropdown showed only one team's players (1000-row truncation).** On the
+  predictions page, matches with an alphabetically-late team (e.g. United States vs Paraguay,
+  match id 21) rendered ONLY the other team's players in the goal-scorer dropdown — the late
+  team's whole squad was missing and couldn't be picked. **Root cause:** `app/predictions/page.tsx`
+  loaded every player with one unbounded `from("players").select(...)`. There are **1245** players,
+  which exceeds Supabase/PostgREST's **default 1000-row response cap**, so the query silently
+  returned only the first ~1000 rows (no error). Players are seeded in team-name order, so the
+  highest-id squads (United States, Uruguay, …) fell past row 1000 and were dropped; `squadByTeam`
+  then had an **empty** list for those teams and `MatchCard` rendered no `<optgroup>` for them.
+  (Paraguay, earlier alphabetically, survived — which is why only it showed.) **NOT** a data
+  problem (USA has 26 players) and **NOT** a `buildScorerGroups` problem (all positions are clean
+  `GK/DEF/MID/FWD`). **Fix:** page through the players table in 1000-row chunks
+  (`.order("id").range(from, from+999)`, loop until a short page) so all 1245 load regardless of the
+  cap — `squadByTeam` is now complete for every team. The **admin** result page
+  (`app/admin/match/[id]/page.tsx`) was already correct: it filters players with
+  `.in("team_id", [teamA.id, teamB.id])` (~52 rows, far under the cap), so both squads always
+  appeared there — left as-is. **Defensive hardening** in `lib/scorer-options.ts` (display-only, no
+  save/scoring change): position bucketing now goes through `normalizePosition()` which uppercases/
+  trims and maps common variants (GK/GOALKEEPER; DF/DEF/DEFENDER/CB/LB/RB/WB→DEF;
+  MF/MID/MIDFIELD(ER)/CM/DM/AM→MID; FW/FWD/FORWARD/ATT/ATTACK/ST/CF/WG→FWD), and **any** unrecognised
+  or null position falls into that team's **"Other"** group — never dropped; plus an explicit guard
+  that, if a team has players but produced zero grouped options, surfaces its full squad under
+  "Other". No schema, scoring-engine, saved-data, or seed changes. `npm run build` clean and all 16
+  scoring tests pass. Acceptance: USA vs Paraguay now shows both squads, grouped by position, on
+  both the predictions and admin pages.

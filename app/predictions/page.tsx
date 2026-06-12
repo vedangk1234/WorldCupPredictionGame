@@ -99,10 +99,24 @@ export default async function PredictionsPage() {
 
   // Every player (id → squad info) for the scorer dropdowns and name lookups.
   // Picks are always from the two squads, so this covers every referenced id.
-  const { data: playersData } = await supabase
-    .from("players")
-    .select("id, name, position, shirt_number, team_id");
-  const players = (playersData ?? []) as CardPlayer[];
+  // NOTE: there are ~1245 players, which exceeds Supabase/PostgREST's default
+  // 1000-row response cap. An unbounded select silently returns only the first
+  // 1000 rows, dropping the highest-id squads (alphabetically-late teams such as
+  // United States) — those teams then show an EMPTY scorer dropdown. Page through
+  // in 1000-row chunks, ordered by id for stable paging, so every squad loads.
+  const players: CardPlayer[] = [];
+  const PLAYER_PAGE = 1000;
+  for (let from = 0; ; from += PLAYER_PAGE) {
+    const { data: chunk, error: playersErr } = await supabase
+      .from("players")
+      .select("id, name, position, shirt_number, team_id")
+      .order("id", { ascending: true })
+      .range(from, from + PLAYER_PAGE - 1);
+    if (playersErr) break;
+    const rows = (chunk ?? []) as CardPlayer[];
+    players.push(...rows);
+    if (rows.length < PLAYER_PAGE) break;
+  }
   const squadByTeam = new Map<number, CardPlayer[]>();
   for (const p of players) {
     const list = squadByTeam.get(p.team_id) ?? [];
