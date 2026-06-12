@@ -255,3 +255,23 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   pass). `ResultForm` relabels the minute input as a normal "Minute (optional)" field.
   RLS policies on `match_goals` were left as-is. **Re-run** `supabase/schema.sql` then
   `supabase/seed.sql` in Supabase to apply (drops & recreates — fine, no game data yet).
+- **Phase 3 section 1 (auth — signup / login / logout / auto-login):** Added the
+  user-facing auth flow. `lib/username.ts` is the single source of truth for the
+  username↔synthetic-email mapping (`AUTH_EMAIL_DOMAIN = "wc.local"`, `normalizeUsername`
+  = trim+lowercase, `usernameToEmail`, `validateUsername` 3–20 of `[a-z0-9_]`, `validateName`
+  1–40). `app/signup/page.tsx` (client, browser Supabase client) collects **Name, Username,
+  Password, Confirm** — **no email field** — with inline validation, calls `auth.signUp`
+  passing `options.data.name`/`username` (the existing `handle_new_user()` trigger reads
+  those into `profiles`); duplicate → "That username is taken", no-session → a "turn off
+  Confirm email" diagnostic, success+session → `/` + refresh. `app/login/page.tsx` (client)
+  takes username+password → `auth.signInWithPassword({ email: usernameToEmail(...) })`,
+  bad creds → "Wrong username or password." Logout is a server action in
+  `app/auth-actions.ts` (`signOut()` → server client `auth.signOut()` → `redirect("/")`),
+  wired to a form button. `app/components/SiteHeader.tsx` (server) reads the user + profile
+  and shows the wordmark + (logged-out) Log in / Create account, or (logged-in) "Hi, {name}",
+  logout, and an **Admin** link only when `is_admin`. `app/page.tsx` replaced the Phase-1
+  setup-check placeholder with an auth-aware home (hero + CTAs logged-out; greeting + "Make
+  Predictions"/"Leaderboard" logged-in). Added placeholder `app/predictions` and
+  `app/leaderboard` pages ("Coming in the next update.") so nothing dead-links. Updated
+  SETUP.md step 7 (admin can be flipped now). **No schema, scoring-engine, or admin-panel
+  changes**; `npm run build` clean and all 16 scoring tests pass.

@@ -81,15 +81,18 @@ git push -u origin main
 4. **Deploy**. When it finishes, open the URL — same "Setup check passed" page means
    the whole pipeline (GitHub → Vercel → Supabase) is green.
 
-## 7. Make yourself admin — *after Phase 3 adds signup*
+## 7. Make yourself admin — *you can do this now*
 
-The signup screen arrives in Phase 3. Once it exists:
-1. Sign up in the live app with your name + username + password.
-2. Back in Supabase → **SQL Editor**, run (use the username you chose):
+Signup is live (Phase 3 section 1). To get admin access:
+1. Sign up in the live app with your **name + username + password + confirm**
+   (there's no email field — the username is all you need). You're logged in
+   automatically.
+2. Back in Supabase → **SQL Editor**, run — using the **normalized lowercase**
+   username you chose:
    ```sql
-   update public.profiles set is_admin = true where username = 'vedang';
+   update public.profiles set is_admin = true where username = '<your-username>';
    ```
-3. Refresh the app — you now have access to the admin panel.
+3. Refresh the app — the **Admin** link appears in the header and `/admin` opens.
 
 ---
 
