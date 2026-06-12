@@ -266,9 +266,10 @@ export default async function PredictionsPage() {
               and they actually win, you earn +5 on top of your other points. No bonus if they draw
               or lose, and matches with no ⚡ tag have no underdog.
             </li>
-            <li style={{ color: "var(--gold-300)" }}>
-              <strong>Lock before kickoff</strong> — you must lock your prediction before the match
-              starts. An unlocked prediction doesn&apos;t count — 0 points for that match.
+            <li>
+              <strong style={{ color: "var(--gold-300)" }}>Lock before kickoff</strong> — you must
+              lock your prediction before the match starts. An unlocked prediction doesn&apos;t
+              count — 0 points for that match.
             </li>
           </ul>
         </details>
