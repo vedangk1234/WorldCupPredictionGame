@@ -1,0 +1,283 @@
+import Link from "next/link";
+import { requireAdmin } from "@/lib/auth";
+import { fmtIST, fmtISTTime } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
+
+// Shape returned by the matches query with both teams + underdog joined.
+interface JoinedTeam {
+  id: number;
+  name: string;
+  code: string | null;
+  flag_url: string | null;
+}
+interface AdminMatchRow {
+  id: number;
+  group_letter: string | null;
+  matchday: number | null;
+  kickoff_at: string;
+  predictions_close_at: string;
+  underdog_team_id: number | null;
+  score_a: number | null;
+  score_b: number | null;
+  finished: boolean;
+  team_a: JoinedTeam | null;
+  team_b: JoinedTeam | null;
+  underdog: JoinedTeam | null;
+}
+
+type MatchState = "open" | "locked" | "finished";
+
+function matchState(m: AdminMatchRow, now: number): MatchState {
+  if (m.finished) return "finished";
+  if (new Date(m.predictions_close_at).getTime() <= now) return "locked";
+  return "open";
+}
+
+function TeamName({ team }: { team: JoinedTeam | null }) {
+  if (!team) return <span style={{ color: "var(--chalk-dim)" }}>?</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {team.flag_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={team.flag_url}
+          alt=""
+          aria-hidden
+          width={20}
+          height={14}
+          style={{ borderRadius: 2, objectFit: "cover", display: "block" }}
+        />
+      ) : team.code ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "var(--chalk-dim)",
+            border: "1px solid var(--pitch-line)",
+            borderRadius: 4,
+            padding: "1px 4px",
+          }}
+        >
+          {team.code}
+        </span>
+      ) : null}
+      <span style={{ fontWeight: 600 }}>{team.name}</span>
+    </span>
+  );
+}
+
+const STATE_STYLE: Record<MatchState, { label: string; bg: string; fg: string; border: string }> = {
+  open: { label: "Open", bg: "rgba(31,164,99,0.14)", fg: "var(--pitch-500)", border: "var(--pitch-line)" },
+  locked: { label: "Locked · awaiting result", bg: "rgba(243,201,105,0.16)", fg: "var(--gold-300)", border: "rgba(243,201,105,0.45)" },
+  finished: { label: "Finished", bg: "rgba(159,179,166,0.12)", fg: "var(--chalk-dim)", border: "var(--pitch-line)" },
+};
+
+function StateBadge({ state }: { state: MatchState }) {
+  const s = STATE_STYLE[state];
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        padding: "3px 9px",
+        borderRadius: 99,
+        background: s.bg,
+        color: s.fg,
+        border: `1px solid ${s.border}`,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+export default async function AdminHome() {
+  const { supabase } = await requireAdmin();
+
+  const { data, error } = await supabase
+    .from("matches")
+    .select(
+      `id, group_letter, matchday, kickoff_at, predictions_close_at,
+       underdog_team_id, score_a, score_b, finished,
+       team_a:teams!matches_team_a_id_fkey(id, name, code, flag_url),
+       team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url),
+       underdog:teams!matches_underdog_team_id_fkey(id, name, code, flag_url)`,
+    )
+    .order("kickoff_at", { ascending: true });
+
+  const matches = (data ?? []) as unknown as AdminMatchRow[];
+  const now = Date.now();
+
+  // Group by group_letter A..L (preserving the kickoff order from the query).
+  const groups = new Map<string, AdminMatchRow[]>();
+  for (const m of matches) {
+    const key = m.group_letter ?? "—";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(m);
+  }
+  const groupKeys = Array.from(groups.keys()).sort();
+
+  return (
+    <main style={{ maxWidth: 980, margin: "0 auto", padding: "40px 24px 80px" }}>
+      <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 22 }} />
+      <p
+        style={{
+          color: "var(--gold-400)",
+          letterSpacing: "0.18em",
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        ADMIN · FIFA WORLD CUP 2026
+      </p>
+      <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: "8px 0 14px" }}>
+        Match Control
+      </h1>
+
+      {/* Legend */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          alignItems: "center",
+          color: "var(--chalk-dim)",
+          fontSize: 13,
+          marginBottom: 28,
+        }}
+      >
+        <StateBadge state="open" />
+        <span>predictions still open</span>
+        <span style={{ opacity: 0.4 }}>·</span>
+        <StateBadge state="locked" />
+        <span>played / closed — enter the result</span>
+        <span style={{ opacity: 0.4 }}>·</span>
+        <StateBadge state="finished" />
+        <span>result in, points computed</span>
+      </div>
+
+      {error && (
+        <p style={{ color: "var(--m3)" }}>Failed to load matches: {error.message}</p>
+      )}
+      {!error && matches.length === 0 && (
+        <p style={{ color: "var(--chalk-dim)" }}>
+          No matches found. Run <code>supabase/seed.sql</code> first.
+        </p>
+      )}
+
+      {groupKeys.map((g) => (
+        <section key={g} style={{ marginBottom: 34 }}>
+          <h2
+            className="display"
+            style={{
+              fontSize: 18,
+              margin: "0 0 12px",
+              color: "var(--chalk)",
+              borderLeft: "3px solid var(--gold-400)",
+              paddingLeft: 10,
+            }}
+          >
+            Group {g}
+          </h2>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {groups.get(g)!.map((m) => {
+              const state = matchState(m, now);
+              const dim = state === "finished";
+              return (
+                <Link
+                  key={m.id}
+                  href={`/admin/match/${m.id}`}
+                  style={{
+                    display: "block",
+                    textDecoration: "none",
+                    color: "inherit",
+                    background: "var(--pitch-900)",
+                    border:
+                      state === "locked"
+                        ? "1px solid rgba(243,201,105,0.45)"
+                        : "1px solid var(--pitch-line)",
+                    borderRadius: 12,
+                    padding: "14px 16px",
+                    opacity: dim ? 0.6 : 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        fontSize: 16,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <TeamName team={m.team_a} />
+                      <span style={{ color: "var(--chalk-dim)", fontSize: 13 }}>vs</span>
+                      <TeamName team={m.team_b} />
+                      {m.finished && m.score_a !== null && m.score_b !== null && (
+                        <span
+                          className="display"
+                          style={{
+                            marginLeft: 4,
+                            fontSize: 15,
+                            color: "var(--gold-300)",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {m.score_a}–{m.score_b}
+                        </span>
+                      )}
+                    </div>
+                    <StateBadge state={state} />
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "4px 14px",
+                      marginTop: 8,
+                      fontSize: 12.5,
+                      color: "var(--chalk-dim)",
+                    }}
+                  >
+                    <span>
+                      Group {m.group_letter ?? "—"}
+                      {m.matchday ? ` · MD ${m.matchday}` : ""}
+                    </span>
+                    <span>Kickoff {fmtIST(m.kickoff_at)}</span>
+                    <span>Closes {fmtISTTime(m.predictions_close_at)}</span>
+                  </div>
+
+                  <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                    {m.underdog ? (
+                      <span style={{ color: "var(--gold-300)" }}>
+                        ⚡ Underdog: {m.underdog.name}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--chalk-dim)", opacity: 0.7 }}>
+                        no underdog set
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </main>
+  );
+}
