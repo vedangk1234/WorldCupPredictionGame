@@ -238,24 +238,37 @@ export default async function PredictionsPage() {
             }}
           >
             <li>
-              <strong style={{ color: "var(--gold-300)" }}>Exact score 9</strong> · correct
-              winner <strong>+3</strong> · correct winning margin <strong>+1</strong>
+              <strong style={{ color: "var(--gold-300)" }}>Exact scoreline +5</strong> — you
+              predicted the precise final score.
             </li>
             <li>
-              <strong style={{ color: "var(--gold-300)" }}>Exact draw 6</strong> · right that
-              it&apos;s a draw but wrong score <strong>+1</strong>
+              <strong style={{ color: "var(--gold-300)" }}>Correct match winner +3</strong> — you
+              picked the right team to win, or correctly called a draw.
             </li>
             <li>
-              Each correctly-named scorer <strong>+2 per goal</strong> they score (a brace = +4);{" "}
-              <strong>−1</strong> if a player you backed scores an own goal
+              <strong style={{ color: "var(--gold-300)" }}>Correct goal difference +1</strong> —
+              you got the winning margin right (e.g. a win by 2). A correctly predicted draw counts
+              here too.
             </li>
             <li>
-              Designated <strong>⚡ underdog</strong> actually wins and you backed them:{" "}
-              <strong>+5</strong>
+              <strong style={{ color: "var(--gold-300)" }}>Each correct goal scorer +2 per goal</strong>{" "}
+              — for every player you name who actually scores, you get +2 for each goal they score (a
+              brace = +4).
+            </li>
+            <li>
+              <strong style={{ color: "var(--gold-300)" }}>Predicted scorer scores an own goal −1</strong>{" "}
+              — if a player you backed to score puts it into their own net instead, you lose 1 point
+              for that pick.
+            </li>
+            <li>
+              <strong style={{ color: "var(--gold-300)" }}>Underdog win +5</strong> — some matches
+              have a designated ⚡ underdog (the team less expected to win). If you back that underdog
+              and they actually win, you earn +5 on top of your other points. No bonus if they draw
+              or lose, and matches with no ⚡ tag have no underdog.
             </li>
             <li style={{ color: "var(--gold-300)" }}>
-              You <strong>must lock</strong> your prediction before kickoff — an unlocked
-              prediction does not count (0 points for that match).
+              <strong>Lock before kickoff</strong> — you must lock your prediction before the match
+              starts. An unlocked prediction doesn&apos;t count — 0 points for that match.
             </li>
           </ul>
         </details>
