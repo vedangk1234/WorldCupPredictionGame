@@ -58,12 +58,6 @@ export default async function SiteHeader() {
                 Hi, <strong style={{ color: "var(--chalk)" }}>{name ?? "player"}</strong>
               </span>
               <Link
-                href="/predictions"
-                style={{ color: "var(--chalk)", fontWeight: 600, textDecoration: "none" }}
-              >
-                Predictions
-              </Link>
-              <Link
                 href="/leaderboard"
                 style={{ color: "var(--chalk)", fontWeight: 600, textDecoration: "none" }}
               >

@@ -388,3 +388,14 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   query over all finished match ids and joins to the reveal data for the expand detail; no
   separate `leaderboard` query on `/predictions` anymore. `npm run build` clean and all 16 scoring
   tests pass. **Phase 3 is complete.**
+- **Home ('/') now redirects logged-in users straight to the predictions screen and logged-out
+  users to /login; removed the landing hero/buttons and the redundant Predictions nav link.**
+  Routing/nav only — **no schema, scoring-engine, admin-panel, or prediction/leaderboard logic
+  changes**. `app/page.tsx` is now a thin server component: loads the user via the server Supabase
+  client, `redirect("/login")` when signed out, else `redirect("/predictions")` — no hero,
+  greeting, or buttons (the old "Predictions League" landing is gone). `SiteHeader` drops the now-
+  redundant "Predictions" link (the wordmark → `/` IS the predictions screen); it keeps the
+  wordmark, "Leaderboard", "Admin" (admins only), "Hi, {name}", and Log out. `app/predictions/page.tsx`
+  drops its "← Home" button (home now IS this screen) and its unused `Link` import. `/leaderboard`
+  keeps its "← Home" → `/`, which correctly resolves to the predictions screen. `npm run build`
+  clean and all 16 scoring tests pass.
