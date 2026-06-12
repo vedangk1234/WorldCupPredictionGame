@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { fmtIST, fmtISTTime } from "@/lib/format";
 import { lockPrediction } from "./actions";
 import MatchLeaderboard from "./MatchLeaderboard";
+import { buildScorerGroups } from "@/lib/scorer-options";
 
 export type MatchState = "open" | "locked" | "closed" | "finished";
 
@@ -97,15 +98,6 @@ function flag(team: { flag_url: string | null }): string {
   return team.flag_url ? `${team.flag_url} ` : "";
 }
 
-function sortSquad(list: CardPlayer[]): CardPlayer[] {
-  return [...list].sort((a, b) => {
-    const sa = a.shirt_number ?? 999;
-    const sb = b.shirt_number ?? 999;
-    if (sa !== sb) return sa - sb;
-    return a.name.localeCompare(b.name);
-  });
-}
-
 const card: React.CSSProperties = {
   background: "var(--pitch-900)",
   border: "1px solid var(--pitch-line)",
@@ -169,8 +161,16 @@ export default function MatchCard(props: Props) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const sortedA = useMemo(() => sortSquad(squadA), [squadA]);
-  const sortedB = useMemo(() => sortSquad(squadB), [squadB]);
+  // Grouped scorer options: per (team, position) optgroups, GK→DEF→MID→FWD,
+  // shirt-number order within each. Display-only — selecting stores player_id.
+  const scorerGroups = useMemo(
+    () =>
+      buildScorerGroups([
+        { name: teamA.name, flag: teamA.flag_url, players: squadA },
+        { name: teamB.name, flag: teamB.flag_url, players: squadB },
+      ]),
+    [teamA.name, teamA.flag_url, teamB.name, teamB.flag_url, squadA, squadB],
+  );
 
   // id → "flag Name" for rendering backed scorers as names.
   const playerName = useMemo(() => {
@@ -388,24 +388,15 @@ export default function MatchCard(props: Props) {
                     style={selectStyle}
                   >
                     <option value={0}>— select scorer —</option>
-                    <optgroup label={`${flag(teamA)}${teamA.name}`}>
-                      {sortedA.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.shirt_number != null ? `#${p.shirt_number} ` : ""}
-                          {p.name}
-                          {p.position ? ` (${p.position})` : ""}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label={`${flag(teamB)}${teamB.name}`}>
-                      {sortedB.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.shirt_number != null ? `#${p.shirt_number} ` : ""}
-                          {p.name}
-                          {p.position ? ` (${p.position})` : ""}
-                        </option>
-                      ))}
-                    </optgroup>
+                    {scorerGroups.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.options.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                   <button
                     type="button"

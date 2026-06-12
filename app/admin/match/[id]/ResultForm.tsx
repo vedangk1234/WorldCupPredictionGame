@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { GoalEntry } from "@/lib/types";
 import { saveAndCompute } from "../../actions";
+import { buildScorerGroups } from "@/lib/scorer-options";
 
 interface FormPlayer {
   id: number;
@@ -114,14 +115,24 @@ export default function ResultForm({
     return map;
   }, [players]);
 
-  const grouped = useMemo(() => {
-    const a = players.filter((p) => p.team_id === teamA.id);
-    const b = players.filter((p) => p.team_id === teamB.id);
-    return [
-      { team: teamA, list: a },
-      { team: teamB, list: b },
-    ];
-  }, [players, teamA, teamB]);
+  // Grouped scorer options: per (team, position) optgroups, GK→DEF→MID→FWD,
+  // shirt-number order within each. Display-only — selecting stores player_id.
+  const scorerGroups = useMemo(
+    () =>
+      buildScorerGroups([
+        {
+          name: teamA.name,
+          flag: teamA.flag,
+          players: players.filter((p) => p.team_id === teamA.id),
+        },
+        {
+          name: teamB.name,
+          flag: teamB.flag,
+          players: players.filter((p) => p.team_id === teamB.id),
+        },
+      ]),
+    [players, teamA, teamB],
+  );
 
   // Soft validation: a team's score should equal its normal goals plus the
   // OPPONENT's own goals (an own goal benefits the other team).
@@ -247,16 +258,11 @@ export default function ResultForm({
                 style={selectStyle}
               >
                 <option value={0}>— select scorer —</option>
-                {grouped.map((grp) => (
-                  <optgroup
-                    key={grp.team.id}
-                    label={grp.team.flag ? `${grp.team.flag} ${grp.team.name}` : grp.team.name}
-                  >
-                    {grp.list.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.shirt_number != null ? `#${p.shirt_number} ` : ""}
-                        {p.name}
-                        {p.position ? ` (${p.position})` : ""}
+                {scorerGroups.map((grp) => (
+                  <optgroup key={grp.label} label={grp.label}>
+                    {grp.options.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
                       </option>
                     ))}
                   </optgroup>

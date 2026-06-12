@@ -399,3 +399,16 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   drops its "← Home" button (home now IS this screen) and its unused `Link` import. `/leaderboard`
   keeps its "← Home" → `/`, which correctly resolves to the predictions screen. `npm run build`
   clean and all 16 scoring tests pass.
+- **Scorer dropdowns (user + admin) now group players by position (GK→DEF→MID→FWD) with per-team
+  position headers, shirt-number order within each group; display-only via shared
+  `lib/scorer-options.ts`. No schema/scoring/save changes.** The new helper
+  `buildScorerGroups(teams[]) → ScorerOptionGroup[]` emits one `<optgroup>` per (team, position)
+  — label `"🇧🇷 Brazil — GK"` (flag from `flag_url`, no `<img>`), options `"#<shirt> <name>"`
+  (the trailing "(pos)" suffix dropped since the header states it), shirt-number ascending (nulls
+  last) within each group; a final `"<team> — Other"` group catches any null/unknown position so
+  nobody is dropped, and empty groups are skipped. `app/predictions/MatchCard.tsx` and
+  `app/admin/match/[id]/ResultForm.tsx` both replace their team-only `<optgroup>` construction
+  (and the old `sortSquad`/`grouped` memos) with `buildScorerGroups([teamA, teamB])`. Cap,
+  add/remove, dedupe, score-change trimming, own-goal/minute handling, and saving `player_id` are
+  all unchanged — purely the option list's grouping/order. `npm run build` clean and all 16
+  scoring tests pass.
