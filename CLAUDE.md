@@ -334,3 +334,32 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   submitting (save + lock atomically). Deleted the now-unused `savePrediction` server action in
   `app/predictions/actions.ts` (only `lockPrediction` remains; the shared `writePrediction` helper
   is unchanged). No schema/scoring/admin changes; `tsc --noEmit` clean.
+- **Phase 3 §3 (leaderboards — complete; Phase 3 done):** Read-only display built on existing
+  data — **no schema, scoring-engine, admin-panel, or prediction write/lock/reveal changes**.
+  (A) **Total leaderboard** — `app/leaderboard/page.tsx` replaces the placeholder: server
+  component, `requireUser()`, reads the `public.leaderboard` VIEW, sorts `total_pts` DESC then
+  `username` ASC (stable ties), and renders a ranked table — Rank · Name (username) · Exact ·
+  Winner · GD · Scorers · Underdog · **Total**. The category columns are the view's *counts*
+  (`exact_count`/`winners_count`/`gd_count`/`scorers_count`/`underdog_count`) — a caption notes
+  they're tallies that deliberately don't sum to the points total; Total = `total_pts`
+  (gold/display/tabular). Current user's row highlighted, negatives render fine, and because the
+  view LEFT JOINs profiles the **full roster shows at 0** before any match finishes. Table is in
+  a `.lb-scroll` horizontal-scroll wrapper for phones. (B) **Per-finished-match leaderboard** —
+  new `app/predictions/MatchLeaderboard.tsx` (`"use client"` for click-to-expand), rendered in
+  `MatchCard`'s **finished** branch below the final score. Shows a compact POINTS table (Win ·
+  GD · Exact · Scor · Udog → **Match total**, sorted by total DESC then username) — these are
+  `winner_pts/gd_pts/exact_pts/scorer_pts/underdog_pts` and **DO** sum to the total (contrast the
+  counts board). Current user highlighted; each row expands to that player's predicted scoreline
+  (🏳 TeamA x–y TeamB 🏳) + backed scorers with flags (or "No scorers picked"). Zero rows →
+  "No locked predictions for this match." **Closed-but-not-finished** matches keep the §2 plain
+  reveal list plus a small "Results pending" note (Open/Locked unchanged). (C) **Standings panel**
+  on `/predictions` — `app/predictions/StandingsPanel.tsx` (server) reusing the leaderboard view:
+  top 8 (Rank · Name · Total) plus the current user's own rank if they're below the cut, with a
+  "Full leaderboard →" link. Rendered twice — a sticky desktop right column (`variant="aside"`)
+  and a collapsible mobile section at the top (`variant="mobile"`, closed by default) — toggled
+  by `.standings-aside`/`.standings-mobile` + a `.preds-layout` CSS grid (matches list left,
+  aside right at ≥1024px). The predictions page now batches one `prediction_points` query over all
+  finished match ids (joined to the already-loaded predictor profiles + the existing reveal data
+  for the expand detail) and one `leaderboard` query. (D) Added a **"Leaderboard"** header link
+  for logged-in users in `SiteHeader`; tabular numerals on all point/score figures. `npm run
+  build` clean and all 16 scoring tests pass. **Phase 3 is complete.**

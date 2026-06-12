@@ -1,7 +1,10 @@
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
+import type { LeaderboardRow } from "@/lib/types";
 import MatchCard from "./MatchCard";
-import type { MatchState, CardPlayer, CardPrediction, RevealRow } from "./MatchCard";
+import type { MatchState, CardPlayer, CardPrediction, RevealRow, MatchPointsRow } from "./MatchCard";
+import StandingsPanel from "./StandingsPanel";
+import type { StandingRow } from "./StandingsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,17 @@ interface PredRow {
   score_b: number;
   locked: boolean;
   prediction_scorers: { player_id: number }[] | null;
+}
+
+interface PointsRow {
+  user_id: string;
+  match_id: number;
+  winner_pts: number;
+  gd_pts: number;
+  exact_pts: number;
+  scorer_pts: number;
+  underdog_pts: number;
+  total_pts: number;
 }
 
 function matchState(
@@ -130,6 +144,49 @@ export default async function PredictionsPage() {
     revealByMatch.set(r.match_id, list);
   }
 
+  // Points breakdown for finished matches (one query, RLS allows all to read).
+  // Rows exist only for finished matches and only for locked predictions.
+  const finishedIds = matches.filter((m) => m.finished).map((m) => m.id);
+  const pointsByMatch = new Map<number, MatchPointsRow[]>();
+  if (finishedIds.length > 0) {
+    const { data: pts } = await supabase
+      .from("prediction_points")
+      .select("user_id, match_id, winner_pts, gd_pts, exact_pts, scorer_pts, underdog_pts, total_pts")
+      .in("match_id", finishedIds);
+    for (const row of (pts ?? []) as PointsRow[]) {
+      const prof = profileById.get(row.user_id);
+      const list = pointsByMatch.get(row.match_id) ?? [];
+      list.push({
+        userId: row.user_id,
+        name: prof?.name ?? "Player",
+        username: prof?.username ?? "",
+        winnerPts: row.winner_pts,
+        gdPts: row.gd_pts,
+        exactPts: row.exact_pts,
+        scorerPts: row.scorer_pts,
+        underdogPts: row.underdog_pts,
+        totalPts: row.total_pts,
+      });
+      pointsByMatch.set(row.match_id, list);
+    }
+  }
+
+  // Condensed standings (reuse the leaderboard view): top 8 + my own rank.
+  const { data: lbData } = await supabase.from("leaderboard").select("*");
+  const lb = (lbData ?? []) as LeaderboardRow[];
+  lb.sort((a, b) => b.total_pts - a.total_pts || a.username.localeCompare(b.username));
+  const standings: StandingRow[] = lb.map((r, i) => ({
+    rank: i + 1,
+    userId: r.user_id,
+    name: r.name,
+    username: r.username,
+    totalPts: r.total_pts,
+    isMe: r.user_id === user.id,
+  }));
+  const topStandings = standings.slice(0, 8);
+  const meStanding = standings.find((s) => s.isMe) ?? null;
+  const meBelow = meStanding && meStanding.rank > 8 ? meStanding : null;
+
   // Find the soonest still-open match so we can highlight it as "next up".
   const nextOpenId = matches.find((m) => {
     const mine = myPredByMatch.get(m.id);
@@ -139,7 +196,8 @@ export default async function PredictionsPage() {
   return (
     <>
       <SiteHeader />
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: "32px 20px 80px" }}>
+      <main className="preds-layout">
+        <div className="preds-main">
         <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18, maxWidth: 120 }} />
         <p
           style={{
@@ -201,6 +259,11 @@ export default async function PredictionsPage() {
             </li>
           </ul>
         </details>
+
+        {/* Mobile: collapsible standings near the top (hidden on desktop). */}
+        <div style={{ marginTop: 18 }}>
+          <StandingsPanel variant="mobile" top={topStandings} meBelow={meBelow} />
+        </div>
 
         {matchErr && (
           <p style={{ color: "var(--m3)", marginTop: 20 }}>
@@ -264,10 +327,15 @@ export default async function PredictionsPage() {
                 state={state}
                 isNextOpen={m.id === nextOpenId}
                 reveal={reveal}
+                matchPoints={pointsByMatch.get(m.id) ?? []}
+                currentUserId={user.id}
               />
             );
           })}
         </div>
+        </div>
+
+        <StandingsPanel variant="aside" top={topStandings} meBelow={meBelow} />
       </main>
     </>
   );

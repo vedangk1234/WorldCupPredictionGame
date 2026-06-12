@@ -66,6 +66,40 @@ body {
 }
 .rules-banner[open] > summary::before { transform: rotate(90deg); }
 
+/* Tabular numerals for every score / point figure. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Predictions page: matches list (left) + standings aside (right) on desktop. */
+.preds-layout { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
+.standings-aside { display: none; }
+.standings-mobile { display: block; margin-bottom: 18px; }
+@media (min-width: 1024px) {
+  .preds-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 304px;
+    gap: 30px;
+    align-items: start;
+  }
+  .standings-aside { display: block; position: sticky; top: 20px; }
+  .standings-mobile { display: none; }
+}
+
+/* Leaderboard table scrolls horizontally on narrow screens. */
+.lb-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.lb-table { width: 100%; min-width: 560px; border-collapse: collapse; }
+.lb-table th, .lb-table td { padding: 10px 10px; text-align: right; white-space: nowrap; }
+.lb-table th:first-child, .lb-table td:first-child { text-align: center; }
+.lb-table th:nth-child(2), .lb-table td:nth-child(2) { text-align: left; }
+.lb-table thead th {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chalk-dim);
+  font-weight: 700;
+  border-bottom: 1px solid var(--pitch-line);
+}
+.lb-table tbody td { border-bottom: 1px solid var(--pitch-line); font-size: 14px; }
+
 /* Reduced-motion + focus floor (quality baseline). */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

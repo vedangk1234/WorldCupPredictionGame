@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { fmtIST, fmtISTTime } from "@/lib/format";
 import { lockPrediction } from "./actions";
+import MatchLeaderboard from "./MatchLeaderboard";
 
 export type MatchState = "open" | "locked" | "closed" | "finished";
 
@@ -31,7 +32,21 @@ export interface RevealRow {
   isMe: boolean;
 }
 
-interface CardTeam {
+// One row of the per-match POINTS breakdown (finished matches only). These are
+// points (not counts) and DO sum to totalPts — see CLAUDE.md §2.5.
+export interface MatchPointsRow {
+  userId: string;
+  name: string;
+  username: string;
+  winnerPts: number;
+  gdPts: number;
+  exactPts: number;
+  scorerPts: number;
+  underdogPts: number;
+  totalPts: number;
+}
+
+export interface CardTeam {
   id: number;
   name: string;
   code: string | null;
@@ -55,6 +70,8 @@ interface Props {
   state: MatchState;
   isNextOpen: boolean;
   reveal: RevealRow[];
+  matchPoints: MatchPointsRow[];
+  currentUserId: string;
 }
 
 // Scorer picks carry a client-only uid so React keys survive add/remove.
@@ -120,6 +137,8 @@ export default function MatchCard(props: Props) {
     state,
     isNextOpen,
     reveal,
+    matchPoints,
+    currentUserId,
   } = props;
 
   const editable = state === "open";
@@ -579,8 +598,26 @@ export default function MatchCard(props: Props) {
             </div>
           )}
 
-          {/* Reveal: everyone's picks */}
-          <RevealSection reveal={reveal} playerName={playerName} teamA={teamA} teamB={teamB} />
+          {state === "finished" ? (
+            /* Finished → points-breakdown leaderboard with click-to-expand. */
+            <MatchLeaderboard
+              teamA={teamA}
+              teamB={teamB}
+              squadA={squadA}
+              squadB={squadB}
+              points={matchPoints}
+              reveal={reveal}
+              currentUserId={currentUserId}
+            />
+          ) : (
+            /* Locked / Closed → no result yet: the plain reveal list. */
+            <>
+              <RevealSection reveal={reveal} playerName={playerName} teamA={teamA} teamB={teamB} />
+              <p style={{ fontSize: 12, color: "var(--chalk-dim)", marginTop: 10, opacity: 0.85 }}>
+                Results pending — points appear once the match is finished.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
