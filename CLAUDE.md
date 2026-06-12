@@ -363,3 +363,28 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   for the expand detail) and one `leaderboard` query. (D) Added a **"Leaderboard"** header link
   for logged-in users in `SiteHeader`; tabular numerals on all point/score figures. `npm run
   build` clean and all 16 scoring tests pass. **Phase 3 is complete.**
+- **Phase 3 §3 (final revision — supersedes the standings-panel build above):** Reworked the
+  §3 display so the **only** full board lives at `/leaderboard`; `/predictions` is back to a
+  single column. **No schema, scoring-engine, admin-panel, or prediction write/lock/reveal
+  changes.** (A) **Navigation** — added a "← Home" link near the top of both
+  `app/predictions/page.tsx` and `app/leaderboard/page.tsx`; the `SiteHeader` wordmark links to
+  `/` with Predictions + Leaderboard links for logged-in users, and the logged-in home keeps the
+  "Make Predictions" / "Leaderboard" buttons. (B) **Overall leaderboard** — `/leaderboard`
+  unchanged in substance: counts table (Exact/Winner/GD/Scorers/Underdog) + gold **Total**,
+  ranked `total_pts` DESC then `username`, current row highlighted, full roster at 0 before
+  results, caption noting the columns are tallies. (C) **Finished-match card** — under the
+  "Full time" line, `MatchCard`'s finished branch now shows a **scorers line with minutes**
+  (`ScorersSummary`): goals grouped by the team they counted FOR (own goal → opposing team,
+  marked "(OG)"), ordered by the leading integer of the minute text (blanks last), "No scorers
+  recorded." when empty. Below it, the per-match POINTS board moved into a **collapsed-by-default
+  "View match leaderboard ▸/▾"** toggle (`MatchLeaderboard.tsx`, `"use client"`); expanded it's
+  the Win/GD/Exact/Scor/Udog → Match total table (sorts to total, current row highlighted), and
+  each row is **click-to-expand** to that player's predicted scoreline + backed scorers (flags),
+  "No scorers picked." / "Prediction unavailable." / "No locked predictions for this match." as
+  the empty states. **Closed-but-not-finished** still shows the plain reveal list + a "Results
+  pending" note; Open/Locked unchanged. (D) **Removed** `app/predictions/StandingsPanel.tsx` and
+  its `.standings-aside`/`.standings-mobile` + `.preds-layout` grid CSS (now a plain 880px single
+  column). The predictions page batches the same one `prediction_points` + one `match_goals`
+  query over all finished match ids and joins to the reveal data for the expand detail; no
+  separate `leaderboard` query on `/predictions` anymore. `npm run build` clean and all 16 scoring
+  tests pass. **Phase 3 is complete.**

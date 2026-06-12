@@ -1,3 +1,4 @@
+import Link from "next/link";
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
 import type { LeaderboardRow } from "@/lib/types";
@@ -22,6 +23,19 @@ export default async function LeaderboardPage() {
     <>
       <SiteHeader />
       <main style={{ maxWidth: 880, margin: "0 auto", padding: "32px 20px 80px" }}>
+        <Link
+          href="/"
+          style={{
+            display: "inline-block",
+            color: "var(--chalk-dim)",
+            textDecoration: "none",
+            fontSize: 13.5,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          ← Home
+        </Link>
         <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18, maxWidth: 120 }} />
         <p
           style={{

@@ -1,10 +1,15 @@
+import Link from "next/link";
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
-import type { LeaderboardRow } from "@/lib/types";
 import MatchCard from "./MatchCard";
-import type { MatchState, CardPlayer, CardPrediction, RevealRow, MatchPointsRow } from "./MatchCard";
-import StandingsPanel from "./StandingsPanel";
-import type { StandingRow } from "./StandingsPanel";
+import type {
+  MatchState,
+  CardPlayer,
+  CardPrediction,
+  RevealRow,
+  MatchPointsRow,
+  MatchGoalRow,
+} from "./MatchCard";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +53,13 @@ interface PointsRow {
   scorer_pts: number;
   underdog_pts: number;
   total_pts: number;
+}
+
+interface GoalJoin {
+  match_id: number;
+  minute: string | null;
+  is_own_goal: boolean;
+  players: { name: string; team_id: number } | null;
 }
 
 function matchState(
@@ -171,21 +183,27 @@ export default async function PredictionsPage() {
     }
   }
 
-  // Condensed standings (reuse the leaderboard view): top 8 + my own rank.
-  const { data: lbData } = await supabase.from("leaderboard").select("*");
-  const lb = (lbData ?? []) as LeaderboardRow[];
-  lb.sort((a, b) => b.total_pts - a.total_pts || a.username.localeCompare(b.username));
-  const standings: StandingRow[] = lb.map((r, i) => ({
-    rank: i + 1,
-    userId: r.user_id,
-    name: r.name,
-    username: r.username,
-    totalPts: r.total_pts,
-    isMe: r.user_id === user.id,
-  }));
-  const topStandings = standings.slice(0, 8);
-  const meStanding = standings.find((s) => s.isMe) ?? null;
-  const meBelow = meStanding && meStanding.rank > 8 ? meStanding : null;
+  // Actual scorers for finished matches (one query). Each goal carries its
+  // scorer's name + team and the minute (display-only). For an own goal the
+  // scorer's player_id is the conceding player, so it counts FOR the other team
+  // (the card groups accordingly). See CLAUDE.md §2.2 / schema match_goals.
+  const goalsByMatch = new Map<number, MatchGoalRow[]>();
+  if (finishedIds.length > 0) {
+    const { data: goalsData } = await supabase
+      .from("match_goals")
+      .select("match_id, minute, is_own_goal, players(name, team_id)")
+      .in("match_id", finishedIds);
+    for (const g of (goalsData ?? []) as unknown as GoalJoin[]) {
+      const list = goalsByMatch.get(g.match_id) ?? [];
+      list.push({
+        playerName: g.players?.name ?? "Unknown",
+        teamId: g.players?.team_id ?? 0,
+        minute: g.minute,
+        isOwnGoal: g.is_own_goal,
+      });
+      goalsByMatch.set(g.match_id, list);
+    }
+  }
 
   // Find the soonest still-open match so we can highlight it as "next up".
   const nextOpenId = matches.find((m) => {
@@ -197,7 +215,19 @@ export default async function PredictionsPage() {
     <>
       <SiteHeader />
       <main className="preds-layout">
-        <div className="preds-main">
+        <Link
+          href="/"
+          style={{
+            display: "inline-block",
+            color: "var(--chalk-dim)",
+            textDecoration: "none",
+            fontSize: 13.5,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          ← Home
+        </Link>
         <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18, maxWidth: 120 }} />
         <p
           style={{
@@ -274,11 +304,6 @@ export default async function PredictionsPage() {
           </ul>
         </details>
 
-        {/* Mobile: collapsible standings near the top (hidden on desktop). */}
-        <div style={{ marginTop: 18 }}>
-          <StandingsPanel variant="mobile" top={topStandings} meBelow={meBelow} />
-        </div>
-
         {matchErr && (
           <p style={{ color: "var(--m3)", marginTop: 20 }}>
             Failed to load matches: {matchErr.message}
@@ -342,14 +367,12 @@ export default async function PredictionsPage() {
                 isNextOpen={m.id === nextOpenId}
                 reveal={reveal}
                 matchPoints={pointsByMatch.get(m.id) ?? []}
+                goals={goalsByMatch.get(m.id) ?? []}
                 currentUserId={user.id}
               />
             );
           })}
         </div>
-        </div>
-
-        <StandingsPanel variant="aside" top={topStandings} meBelow={meBelow} />
       </main>
     </>
   );

@@ -34,6 +34,7 @@ export default function MatchLeaderboard({
   reveal: RevealRow[];
   currentUserId: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
   // player id → { name, flag } using each squad's team flag.
@@ -60,10 +61,71 @@ export default function MatchLeaderboard({
 
   return (
     <div style={{ marginTop: 16 }}>
-      <h3 style={{ fontSize: 13.5, fontWeight: 700, margin: "0 0 10px" }}>
-        Match leaderboard
-      </h3>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        style={{
+          background: "transparent",
+          border: "1px solid var(--pitch-line)",
+          color: "var(--chalk)",
+          borderRadius: 9,
+          padding: "8px 14px",
+          fontSize: 13.5,
+          fontWeight: 700,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <span style={{ color: "var(--gold-300)" }}>{expanded ? "▾" : "▸"}</span>
+        View match leaderboard
+      </button>
 
+      {!expanded ? null : rows.length === 0 ? (
+        <p style={{ fontSize: 12.5, color: "var(--chalk-dim)", margin: "12px 0 0" }}>
+          No locked predictions for this match.
+        </p>
+      ) : (
+        <div style={{ marginTop: 12 }}>
+          <MatchLeaderboardTable
+            rows={rows}
+            openId={openId}
+            setOpenId={setOpenId}
+            currentUserId={currentUserId}
+            revealByUser={revealByUser}
+            teamA={teamA}
+            teamB={teamB}
+            playerInfo={playerInfo}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MatchLeaderboardTable({
+  rows,
+  openId,
+  setOpenId,
+  currentUserId,
+  revealByUser,
+  teamA,
+  teamB,
+  playerInfo,
+}: {
+  rows: MatchPointsRow[];
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+  currentUserId: string;
+  revealByUser: Map<string, RevealRow>;
+  teamA: CardTeam;
+  teamB: CardTeam;
+  playerInfo: Map<number, { name: string; flag: string | null }>;
+}) {
+  return (
+    <>
       {rows.length === 0 ? (
         <p style={{ fontSize: 12.5, color: "var(--chalk-dim)", margin: 0 }}>
           No locked predictions for this match.
@@ -115,7 +177,7 @@ export default function MatchLeaderboard({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

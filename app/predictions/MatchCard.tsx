@@ -53,6 +53,16 @@ export interface CardTeam {
   flag_url: string | null;
 }
 
+// One actual goal in a finished match (for the scorers line under full-time).
+// `teamId` is the scorer's own team. A normal goal counts FOR that team; an own
+// goal counts FOR the opposing team (CLAUDE.md §2.2). `minute` is display-only.
+export interface MatchGoalRow {
+  playerName: string;
+  teamId: number;
+  minute: string | null;
+  isOwnGoal: boolean;
+}
+
 interface Props {
   matchId: number;
   groupLetter: string | null;
@@ -71,6 +81,7 @@ interface Props {
   isNextOpen: boolean;
   reveal: RevealRow[];
   matchPoints: MatchPointsRow[];
+  goals: MatchGoalRow[];
   currentUserId: string;
 }
 
@@ -138,6 +149,7 @@ export default function MatchCard(props: Props) {
     isNextOpen,
     reveal,
     matchPoints,
+    goals,
     currentUserId,
   } = props;
 
@@ -292,6 +304,11 @@ export default function MatchCard(props: Props) {
         >
           Full time: {teamA.name} {props.finalScoreA}–{props.finalScoreB} {teamB.name}
         </div>
+      )}
+
+      {/* Scorers line (finished only) */}
+      {state === "finished" && (
+        <ScorersSummary goals={goals} teamA={teamA} teamB={teamB} />
       )}
 
       {/* Underdog tag */}
@@ -620,6 +637,86 @@ export default function MatchCard(props: Props) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Leading integer of a minute string ("45+2" → 45). Blank/unparseable sort last.
+function parseMinute(m: string | null): number {
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const n = parseInt(m, 10);
+  return Number.isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+}
+
+// Scorers line under the full-time score. Goals are grouped by the team they
+// counted FOR: a normal goal → the scorer's team; an own goal → the opposing
+// team (and marked "(OG)"). Within a team, ordered by minute.
+function ScorersSummary({
+  goals,
+  teamA,
+  teamB,
+}: {
+  goals: MatchGoalRow[];
+  teamA: CardTeam;
+  teamB: CardTeam;
+}) {
+  if (goals.length === 0) {
+    return (
+      <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--chalk-dim)" }}>
+        No scorers recorded.
+      </div>
+    );
+  }
+
+  const forTeam = (teamId: number) =>
+    goals
+      .filter((g) => {
+        const countsFor = g.isOwnGoal
+          ? g.teamId === teamA.id
+            ? teamB.id
+            : teamA.id
+          : g.teamId;
+        return countsFor === teamId;
+      })
+      .sort((a, b) => parseMinute(a.minute) - parseMinute(b.minute));
+
+  const render = (team: CardTeam) => {
+    const list = forTeam(team.id);
+    return (
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 600, color: "var(--chalk)" }}>
+          {flag(team)}
+          {team.name}
+        </span>
+        <span style={{ color: "var(--chalk-dim)" }}>
+          {list.length === 0
+            ? "—"
+            : list
+                .map(
+                  (g) =>
+                    `${g.playerName}${g.minute ? ` ${g.minute}'` : ""}${
+                      g.isOwnGoal ? " (OG)" : ""
+                    }`,
+                )
+                .join(", ")}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="tnum"
+      style={{
+        marginTop: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        fontSize: 12.5,
+      }}
+    >
+      {render(teamA)}
+      {render(teamB)}
     </div>
   );
 }

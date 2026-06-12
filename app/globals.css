@@ -69,20 +69,8 @@ body {
 /* Tabular numerals for every score / point figure. */
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* Predictions page: matches list (left) + standings aside (right) on desktop. */
-.preds-layout { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
-.standings-aside { display: none; }
-.standings-mobile { display: block; margin-bottom: 18px; }
-@media (min-width: 1024px) {
-  .preds-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 304px;
-    gap: 30px;
-    align-items: start;
-  }
-  .standings-aside { display: block; position: sticky; top: 20px; }
-  .standings-mobile { display: none; }
-}
+/* Predictions page container (single column — the full board lives at /leaderboard). */
+.preds-layout { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
 
 /* Leaderboard table scrolls horizontally on narrow screens. */
 .lb-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
