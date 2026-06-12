@@ -12,6 +12,7 @@ interface JoinedTeam {
   id: number;
   name: string;
   code: string | null;
+  flag_url: string | null;
 }
 interface MatchDetail {
   id: number;
@@ -37,8 +38,8 @@ export default async function MatchDetailPage({ params }: { params: { id: string
     .select(
       `id, group_letter, matchday, kickoff_at, predictions_close_at,
        underdog_team_id, score_a, score_b, finished,
-       team_a:teams!matches_team_a_id_fkey(id, name, code),
-       team_b:teams!matches_team_b_id_fkey(id, name, code)`,
+       team_a:teams!matches_team_a_id_fkey(id, name, code, flag_url),
+       team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url)`,
     )
     .eq("id", matchId)
     .single();
@@ -96,7 +97,9 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
       <div style={{ margin: "14px 0 6px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h1 className="display" style={{ fontSize: 30, lineHeight: 1.1, margin: 0 }}>
+          {teamA.flag_url ? <span aria-hidden>{teamA.flag_url} </span> : null}
           {teamA.name} <span style={{ color: "var(--chalk-dim)", fontSize: 20 }}>vs</span>{" "}
+          {teamB.flag_url ? <span aria-hidden>{teamB.flag_url} </span> : null}
           {teamB.name}
         </h1>
         <span
@@ -132,8 +135,8 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
         <ResultForm
           matchId={matchId}
-          teamA={{ id: teamA.id, name: teamA.name }}
-          teamB={{ id: teamB.id, name: teamB.name }}
+          teamA={{ id: teamA.id, name: teamA.name, flag: teamA.flag_url }}
+          teamB={{ id: teamB.id, name: teamB.name, flag: teamB.flag_url }}
           players={players}
           initialScoreA={match.score_a}
           initialScoreB={match.score_b}

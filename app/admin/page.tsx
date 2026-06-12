@@ -39,27 +39,8 @@ function TeamName({ team }: { team: JoinedTeam | null }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       {team.flag_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={team.flag_url}
-          alt=""
-          aria-hidden
-          width={20}
-          height={14}
-          style={{ borderRadius: 2, objectFit: "cover", display: "block" }}
-        />
-      ) : team.code ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "var(--chalk-dim)",
-            border: "1px solid var(--pitch-line)",
-            borderRadius: 4,
-            padding: "1px 4px",
-          }}
-        >
-          {team.code}
+        <span aria-hidden style={{ fontSize: 18, lineHeight: 1 }}>
+          {team.flag_url}
         </span>
       ) : null}
       <span style={{ fontWeight: 600 }}>{team.name}</span>
@@ -111,15 +92,6 @@ export default async function AdminHome() {
   const matches = (data ?? []) as unknown as AdminMatchRow[];
   const now = Date.now();
 
-  // Group by group_letter A..L (preserving the kickoff order from the query).
-  const groups = new Map<string, AdminMatchRow[]>();
-  for (const m of matches) {
-    const key = m.group_letter ?? "—";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(m);
-  }
-  const groupKeys = Array.from(groups.keys()).sort();
-
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "40px 24px 80px" }}>
       <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 22 }} />
@@ -168,116 +140,99 @@ export default async function AdminHome() {
         </p>
       )}
 
-      {groupKeys.map((g) => (
-        <section key={g} style={{ marginBottom: 34 }}>
-          <h2
-            className="display"
-            style={{
-              fontSize: 18,
-              margin: "0 0 12px",
-              color: "var(--chalk)",
-              borderLeft: "3px solid var(--gold-400)",
-              paddingLeft: 10,
-            }}
-          >
-            Group {g}
-          </h2>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {groups.get(g)!.map((m) => {
-              const state = matchState(m, now);
-              const dim = state === "finished";
-              return (
-                <Link
-                  key={m.id}
-                  href={`/admin/match/${m.id}`}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {matches.map((m) => {
+          const state = matchState(m, now);
+          const dim = state === "finished";
+          return (
+            <Link
+              key={m.id}
+              href={`/admin/match/${m.id}`}
+              style={{
+                display: "block",
+                textDecoration: "none",
+                color: "inherit",
+                background: "var(--pitch-900)",
+                border:
+                  state === "locked"
+                    ? "1px solid rgba(243,201,105,0.45)"
+                    : "1px solid var(--pitch-line)",
+                borderRadius: 12,
+                padding: "14px 16px",
+                opacity: dim ? 0.6 : 1,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
                   style={{
-                    display: "block",
-                    textDecoration: "none",
-                    color: "inherit",
-                    background: "var(--pitch-900)",
-                    border:
-                      state === "locked"
-                        ? "1px solid rgba(243,201,105,0.45)"
-                        : "1px solid var(--pitch-line)",
-                    borderRadius: 12,
-                    padding: "14px 16px",
-                    opacity: dim ? 0.6 : 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    fontSize: 16,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div
+                  <TeamName team={m.team_a} />
+                  <span style={{ color: "var(--chalk-dim)", fontSize: 13 }}>vs</span>
+                  <TeamName team={m.team_b} />
+                  {m.finished && m.score_a !== null && m.score_b !== null && (
+                    <span
+                      className="display"
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        fontSize: 16,
-                        flexWrap: "wrap",
+                        marginLeft: 4,
+                        fontSize: 15,
+                        color: "var(--gold-300)",
+                        fontWeight: 800,
                       }}
                     >
-                      <TeamName team={m.team_a} />
-                      <span style={{ color: "var(--chalk-dim)", fontSize: 13 }}>vs</span>
-                      <TeamName team={m.team_b} />
-                      {m.finished && m.score_a !== null && m.score_b !== null && (
-                        <span
-                          className="display"
-                          style={{
-                            marginLeft: 4,
-                            fontSize: 15,
-                            color: "var(--gold-300)",
-                            fontWeight: 800,
-                          }}
-                        >
-                          {m.score_a}–{m.score_b}
-                        </span>
-                      )}
-                    </div>
-                    <StateBadge state={state} />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "4px 14px",
-                      marginTop: 8,
-                      fontSize: 12.5,
-                      color: "var(--chalk-dim)",
-                    }}
-                  >
-                    <span>
-                      Group {m.group_letter ?? "—"}
-                      {m.matchday ? ` · MD ${m.matchday}` : ""}
+                      {m.score_a}–{m.score_b}
                     </span>
-                    <span>Kickoff {fmtIST(m.kickoff_at)}</span>
-                    <span>Closes {fmtISTTime(m.predictions_close_at)}</span>
-                  </div>
+                  )}
+                </div>
+                <StateBadge state={state} />
+              </div>
 
-                  <div style={{ marginTop: 6, fontSize: 12.5 }}>
-                    {m.underdog ? (
-                      <span style={{ color: "var(--gold-300)" }}>
-                        ⚡ Underdog: {m.underdog.name}
-                      </span>
-                    ) : (
-                      <span style={{ color: "var(--chalk-dim)", opacity: 0.7 }}>
-                        no underdog set
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "4px 14px",
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: "var(--chalk-dim)",
+                }}
+              >
+                <span>
+                  Group {m.group_letter ?? "—"}
+                  {m.matchday ? ` · MD ${m.matchday}` : ""}
+                </span>
+                <span>Kickoff {fmtIST(m.kickoff_at)}</span>
+                <span>Closes {fmtISTTime(m.predictions_close_at)}</span>
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                {m.underdog ? (
+                  <span style={{ color: "var(--gold-300)" }}>
+                    ⚡ Underdog: {m.underdog.name}
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--chalk-dim)", opacity: 0.7 }}>
+                    no underdog set
+                  </span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </main>
   );
 }

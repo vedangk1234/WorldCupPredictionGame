@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { GoalEntry } from "@/lib/types";
-import { saveResult, finishMatch, recomputePoints } from "../../actions";
+import { saveAndCompute } from "../../actions";
 
 interface FormPlayer {
   id: number;
@@ -12,10 +12,16 @@ interface FormPlayer {
   team_id: number;
 }
 
+interface FormTeam {
+  id: number;
+  name: string;
+  flag: string | null;
+}
+
 interface Props {
   matchId: number;
-  teamA: { id: number; name: string };
-  teamB: { id: number; name: string };
+  teamA: FormTeam;
+  teamB: FormTeam;
   players: FormPlayer[];
   initialScoreA: number | null;
   initialScoreB: number | null;
@@ -100,9 +106,7 @@ export default function ResultForm({
   );
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [savePending, startSave] = useTransition();
-  const [finishPending, startFinish] = useTransition();
-  const [recomputePending, startRecompute] = useTransition();
-  const busy = savePending || finishPending || recomputePending;
+  const busy = savePending;
 
   const teamOf = useMemo(() => {
     const map = new Map<number, number>();
@@ -170,23 +174,7 @@ export default function ResultForm({
       return;
     }
     startSave(async () => {
-      const res = await saveResult(matchId, numA, numB, cleaned);
-      setMsg({ ok: res.ok, text: res.message });
-    });
-  }
-
-  function doFinish() {
-    setMsg(null);
-    startFinish(async () => {
-      const res = await finishMatch(matchId);
-      setMsg({ ok: res.ok, text: res.message });
-    });
-  }
-
-  function doRecompute() {
-    setMsg(null);
-    startRecompute(async () => {
-      const res = await recomputePoints(matchId);
+      const res = await saveAndCompute(matchId, numA, numB, cleaned);
       setMsg({ ok: res.ok, text: res.message });
     });
   }
@@ -200,7 +188,10 @@ export default function ResultForm({
         </h2>
         <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <span style={{ fontWeight: 600 }}>{teamA.name}</span>
+            <span style={{ fontWeight: 600 }}>
+              {teamA.flag ? `${teamA.flag} ` : ""}
+              {teamA.name}
+            </span>
             <input
               type="number"
               min={0}
@@ -214,7 +205,10 @@ export default function ResultForm({
             –
           </span>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <span style={{ fontWeight: 600 }}>{teamB.name}</span>
+            <span style={{ fontWeight: 600 }}>
+              {teamB.flag ? `${teamB.flag} ` : ""}
+              {teamB.name}
+            </span>
             <input
               type="number"
               min={0}
@@ -254,7 +248,10 @@ export default function ResultForm({
               >
                 <option value={0}>— select scorer —</option>
                 {grouped.map((grp) => (
-                  <optgroup key={grp.team.id} label={grp.team.name}>
+                  <optgroup
+                    key={grp.team.id}
+                    label={grp.team.flag ? `${grp.team.flag} ${grp.team.name}` : grp.team.name}
+                  >
                     {grp.list.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.shirt_number != null ? `#${p.shirt_number} ` : ""}
@@ -357,32 +354,15 @@ export default function ResultForm({
       <div style={card}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" onClick={doSave} disabled={busy} style={primaryBtn(busy)}>
-            {savePending ? "Saving…" : "Save result (draft)"}
+            {savePending ? "Saving…" : "Save & compute"}
           </button>
-          <button
-            type="button"
-            onClick={doFinish}
-            disabled={busy}
-            style={primaryBtn(busy, false)}
-          >
-            {finishPending ? "Finishing…" : finished ? "Re-finish + recompute" : "Mark finished + recompute"}
-          </button>
-          {finished && (
-            <button
-              type="button"
-              onClick={doRecompute}
-              disabled={busy}
-              style={primaryBtn(busy, false)}
-            >
-              {recomputePending ? "Recomputing…" : "Recompute points"}
-            </button>
-          )}
         </div>
         <p style={{ color: "var(--chalk-dim)", fontSize: 12.5, margin: "12px 0 0" }}>
-          Save the draft first to get the result right. “Mark finished” and
-          “Recompute” run the scoring engine over the <strong>saved</strong> result
-          for every <strong>locked</strong> prediction (unlocked = out of the match,
-          skipped). Recompute is idempotent — safe to re-run after a correction.
+          One step: saves the score + scorers, marks the match{" "}
+          <strong>finished</strong>, and runs the scoring engine over every{" "}
+          <strong>locked</strong> prediction (unlocked = out of the match, skipped).
+          Idempotent — re-open this match, correct the result, and{" "}
+          {finished ? "save again" : "save"} to overwrite and recompute cleanly.
         </p>
         {msg && (
           <p

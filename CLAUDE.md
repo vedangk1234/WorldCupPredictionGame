@@ -275,3 +275,23 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `app/leaderboard` pages ("Coming in the next update.") so nothing dead-links. Updated
   SETUP.md step 7 (admin can be flipped now). **No schema, scoring-engine, or admin-panel
   changes**; `npm run build` clean and all 16 scoring tests pass.
+- **Admin patch (chronological list, flag emojis, one-step Save & compute):** Edits the
+  admin panel only — **no schema, scoring-engine, or user-page changes**. `/admin` now
+  renders ONE flat list of all 72 matches ordered by `kickoff_at` ascending (the A–L group
+  grouping is gone); each row keeps its content (teams, group + matchday metadata, IST
+  kickoff/close, state badge, underdog hint, final score), finished rows dimmed,
+  locked-awaiting-result rows highlighted. Team names across both admin pages now show the
+  **country flag emoji from `teams.flag_url`** (which stores the emoji, e.g. "🇧🇷") before the
+  name — no `<img>` (the old `<img src={flag_url}>` was replaced); null/empty flag → name
+  only. The result-entry form's three buttons (Save draft / Mark finished / Recompute) are
+  replaced by a SINGLE **"Save & compute"** button backed by one new server action
+  `saveAndCompute(matchId, scoreA, scoreB, goals[])` in `app/admin/actions.ts`: `requireAdmin`
+  → validate scores (int ≥ 0) and that every scorer belongs to one of the two squads → upsert
+  `score_a/score_b` and set `finished = true` → replace `match_goals` (delete then one row per
+  goal) → recompute idempotently (delete `prediction_points`, re-run `scorePrediction` over
+  every LOCKED prediction, unlocked skipped) → revalidate. Re-opening a finished match still
+  loads the saved score + goals for editing; re-saving overwrites and re-recomputes cleanly —
+  that's how corrections work (no separate recompute). Removed the now-unused `saveResult`,
+  `finishMatch`, and `recomputePoints` actions (the shared `recomputeMatch` helper stays);
+  `setUnderdog` is unchanged. The soft "goals ≠ score" warning remains a non-blocking hint.
+  `npm run build` clean and all 16 scoring tests pass.

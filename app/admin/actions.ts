@@ -47,17 +47,21 @@ export async function setUnderdog(
   return {
     ok: true,
     message: match.finished
-      ? "Underdog saved. This match is finished — recompute points to apply it."
+      ? "Underdog saved. This match is finished — hit Save & compute to apply it."
       : "Underdog saved.",
   };
 }
 
 // ---------------------------------------------------------------------------
-// Save the result as a DRAFT — score + scorers only. Does NOT finish or
-// recompute. Goals are stored ONE ROW PER GOAL (a brace = two rows), each row
-// carrying its minute (display only) and is_own_goal flag.
+// Save the result AND compute points in one atomic step. Validates the score
+// and scorers, upserts the score, marks the match finished, replaces this
+// match's goals (one row per goal — a brace = two rows, each carrying its
+// minute (display only) and is_own_goal flag), then recomputes points over
+// every LOCKED prediction. Idempotent: re-opening a finished match, correcting
+// the result, and re-saving overwrites and re-recomputes cleanly — this is how
+// corrections work (no separate draft / finish / recompute steps).
 // ---------------------------------------------------------------------------
-export async function saveResult(
+export async function saveAndCompute(
   matchId: number,
   scoreA: number,
   scoreB: number,
@@ -71,7 +75,7 @@ export async function saveResult(
 
   const { data: match, error: loadErr } = await supabase
     .from("matches")
-    .select("team_a_id, team_b_id, finished")
+    .select("team_a_id, team_b_id")
     .eq("id", matchId)
     .single();
   if (loadErr || !match) return { ok: false, message: "Match not found." };
@@ -89,9 +93,10 @@ export async function saveResult(
     }
   }
 
+  // Score + finished in one update.
   const { error: scoreErr } = await supabase
     .from("matches")
-    .update({ score_a: scoreA, score_b: scoreB })
+    .update({ score_a: scoreA, score_b: scoreB, finished: true })
     .eq("id", matchId);
   if (scoreErr) return { ok: false, message: scoreErr.message };
 
@@ -113,13 +118,19 @@ export async function saveResult(
     if (insErr) return { ok: false, message: insErr.message };
   }
 
+  // Recompute points idempotently over every locked prediction.
+  try {
+    await recomputeMatch(supabase, matchId);
+  } catch (e) {
+    revalidateAdmin(matchId);
+    return {
+      ok: false,
+      message: `Result saved, but points failed to compute: ${(e as Error).message}`,
+    };
+  }
+
   revalidateAdmin(matchId);
-  return {
-    ok: true,
-    message: match.finished
-      ? "Draft result saved. This match is finished — recompute points to apply it."
-      : "Draft result saved.",
-  };
+  return { ok: true, message: "Result saved, match finished, and points computed." };
 }
 
 // ---------------------------------------------------------------------------
@@ -205,47 +216,4 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
     const { error: insErr } = await supabase.from("prediction_points").insert(rows);
     if (insErr) throw new Error(insErr.message);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Mark finished + recompute. Sets finished = true, then recomputes points.
-// ---------------------------------------------------------------------------
-export async function finishMatch(matchId: number): Promise<ActionResult> {
-  const { supabase } = await requireAdmin();
-
-  const { error: finErr } = await supabase
-    .from("matches")
-    .update({ finished: true })
-    .eq("id", matchId);
-  if (finErr) return { ok: false, message: finErr.message };
-
-  try {
-    await recomputeMatch(supabase, matchId);
-  } catch (e) {
-    revalidateAdmin(matchId);
-    return {
-      ok: false,
-      message: `Marked finished, but points failed to compute: ${(e as Error).message}`,
-    };
-  }
-
-  revalidateAdmin(matchId);
-  return { ok: true, message: "Match finished and points recomputed." };
-}
-
-// ---------------------------------------------------------------------------
-// Recompute points WITHOUT toggling finished — for when a score, scorers, or
-// underdog is corrected after the match was finished.
-// ---------------------------------------------------------------------------
-export async function recomputePoints(matchId: number): Promise<ActionResult> {
-  const { supabase } = await requireAdmin();
-
-  try {
-    await recomputeMatch(supabase, matchId);
-  } catch (e) {
-    return { ok: false, message: (e as Error).message };
-  }
-
-  revalidateAdmin(matchId);
-  return { ok: true, message: "Points recomputed." };
 }
