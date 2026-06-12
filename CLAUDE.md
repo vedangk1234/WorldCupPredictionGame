@@ -297,3 +297,40 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `npm run build` clean and all 16 scoring tests pass.
 - **Fix: predictions SELECT RLS recursion** — moved the own-lock reveal check into
   SECURITY DEFINER `has_locked_prediction()`; policy no longer self-references predictions.
+- **Phase 3 §2 (predictions page):** Built the user-facing predictions flow — **no schema,
+  scoring-engine, or admin-panel changes**. Added `lib/auth.ts → requireUser()` (loads the
+  current user server-side, `redirect("/login")` if not signed in). `app/predictions/page.tsx`
+  (server, `force-dynamic`) replaces the placeholder: pins a compact collapsible "How scoring
+  works" banner (`<details>`, styled `.rules-banner` in globals.css), then renders **one flat
+  list of all 72 matches ordered by `kickoff_at` ascending** (no group/date headings) with team
+  **flag emojis** from `teams.flag_url` (a `<span>`, never `<img>`). It loads the user's own
+  predictions (+ `prediction_scorers`), every player once (id→squad map for dropdowns + name
+  lookups), and — only for **revealed** matches — all predictions + predictor profiles in two
+  batched queries (RLS gates these). Per-match state is computed server-side from `now()`,
+  `finished`, `predictions_close_at`, and the user's own `locked`: **finished / closed / locked /
+  open**; finished cards dimmed, the soonest open one badged "Next up". `app/predictions/MatchCard.tsx`
+  ("use client") is the card: header (flag + names, group · MD · IST kickoff/close), prominent
+  ⚡ underdog tag, two score inputs (score_a↔team_a, score_b↔team_b — alignment preserved on
+  save), and capped scorer picks (cap = scoreA+scoreB, both squads in `<optgroup>`s ordered by
+  shirt #, "Add scorer" blocked at cap, lowering a score trims extras with a soft note, picks
+  optional). **Open** state shows "Save draft" + "Lock in Prediction"; Lock opens an inline
+  two-step confirm ("You can't edit this after locking. Lock it in?") that saves+locks atomically;
+  a warning notes unlocked predictions don't count. **Locked / Closed / Finished** are read-only:
+  the user's scoreline + backed scorers by name, the reveal list ("Name (username)" + scoreline +
+  scorers, own row highlighted), final score on finished, and "you didn't lock in time — you're
+  out (0 points)" on a closed match the user never locked. While Open, a "🔒 Everyone's picks
+  unlock once you lock yours" hint stands in for the (RLS-hidden) reveal. `app/predictions/actions.ts`
+  ("use server"): `savePrediction` (draft, locked=false) and `lockPrediction` (atomic save+lock)
+  share a `writePrediction` helper that `requireUser()`s, re-checks the match is open and the
+  existing row isn't locked, validates scores (int ≥ 0) + dedupes/caps scorers + verifies each ∈
+  the two squads, upserts `predictions` (unique user_id+match_id), replaces `prediction_scorers`
+  **while still unlocked** (the scorers RLS write policy requires an unlocked parent), then flips
+  `locked`/`locked_at` last; `revalidatePath("/predictions")`. No delete action. Added a
+  "Predictions" header link for logged-in users in `SiteHeader`. `npm run build` clean and all 16
+  scoring tests pass. (Leaderboards are §3.)
+- **Predictions page — drop the draft button:** Removed the "Save draft" path from the user
+  prediction card. The Open state now shows a single **"Lock in Prediction"** button which opens
+  the inline "You can't edit this after locking. Lock it in?" are-you-sure confirm before
+  submitting (save + lock atomically). Deleted the now-unused `savePrediction` server action in
+  `app/predictions/actions.ts` (only `lockPrediction` remains; the shared `writePrediction` helper
+  is unchanged). No schema/scoring/admin changes; `tsc --noEmit` clean.

@@ -49,6 +49,23 @@ body {
     var(--m4) 60% 80%, var(--m5) 80% 100%);
 }
 
+/* "How scoring works" banner on the predictions page. */
+.rules-banner {
+  background: var(--pitch-900);
+  border: 1px solid var(--pitch-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.rules-banner > summary::-webkit-details-marker { display: none; }
+.rules-banner > summary::before {
+  content: "▸";
+  color: var(--gold-300);
+  margin-right: 8px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.rules-banner[open] > summary::before { transform: rotate(90deg); }
+
 /* Reduced-motion + focus floor (quality baseline). */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
