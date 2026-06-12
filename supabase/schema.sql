@@ -145,6 +145,25 @@ create table public.predictions (
 );
 create index predictions_match_idx on public.predictions(match_id);
 
+-- Helper: has the current user LOCKED their own prediction for a match?
+-- security definer = bypasses RLS on predictions, which is what breaks the
+-- otherwise-infinite recursion in the predictions SELECT reveal policy.
+-- Defined here (after the table exists) because a `language sql` body is
+-- validated at creation time.
+create or replace function public.has_locked_prediction(p_match_id bigint)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.predictions
+    where match_id = p_match_id
+      and user_id = auth.uid()
+      and locked = true
+  );
+$$;
+
 -- =============================================================================
 -- PREDICTION_SCORERS   (which players a user backed to score)
 -- =============================================================================
@@ -228,16 +247,12 @@ create policy "goals read"   on public.match_goals for select to authenticated u
 create policy "goals admin"  on public.match_goals for all  to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- ---- predictions: own writes only while the match is open ----
+drop policy if exists "predictions read own-or-revealed" on public.predictions;
 create policy "predictions read own-or-revealed"
   on public.predictions for select to authenticated
   using (
     user_id = auth.uid()
-    or exists (  -- reveal: viewer has locked their own prediction for this match
-      select 1 from public.predictions me
-      where me.match_id = predictions.match_id
-        and me.user_id = auth.uid()
-        and me.locked = true
-    )
+    or public.has_locked_prediction(match_id)          -- reveal: I've locked mine
     or exists (  -- reveal: predictions have closed for this match
       select 1 from public.matches m
       where m.id = predictions.match_id

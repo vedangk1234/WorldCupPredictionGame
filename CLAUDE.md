@@ -295,3 +295,5 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `finishMatch`, and `recomputePoints` actions (the shared `recomputeMatch` helper stays);
   `setUnderdog` is unchanged. The soft "goals ≠ score" warning remains a non-blocking hint.
   `npm run build` clean and all 16 scoring tests pass.
+- **Fix: predictions SELECT RLS recursion** — moved the own-lock reveal check into
+  SECURITY DEFINER `has_locked_prediction()`; policy no longer self-references predictions.
