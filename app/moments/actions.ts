@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireUser } from "@/lib/auth";
 import type { MediaType } from "@/lib/types";
 
 export interface ActionResult {
@@ -75,4 +75,95 @@ export async function deleteMoment(id: number): Promise<ActionResult> {
 
   revalidatePath("/moments");
   return { ok: true, message: "Moment deleted." };
+}
+
+// Toggle the current user's like on a moment (count only — no liker names). Any
+// logged-in user. If their (moment_id, user_id) row exists, delete it; otherwise
+// insert it. The unique(moment_id, user_id) constraint makes a double-insert a
+// no-op race — we swallow the duplicate-key error so the toggle stays graceful.
+export async function toggleLike(momentId: number): Promise<ActionResult> {
+  const { user, supabase } = await requireUser();
+
+  const { data: existing } = await supabase
+    .from("moment_likes")
+    .select("id")
+    .eq("moment_id", momentId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("moment_likes")
+      .delete()
+      .eq("id", existing.id);
+    if (error) return { ok: false, message: error.message };
+  } else {
+    const { error } = await supabase
+      .from("moment_likes")
+      .insert({ moment_id: momentId, user_id: user.id });
+    // 23505 = unique violation (a concurrent like) — treat as already liked.
+    if (error && error.code !== "23505") {
+      return { ok: false, message: error.message };
+    }
+  }
+
+  revalidatePath("/moments");
+  return { ok: true, message: "OK" };
+}
+
+// Add a comment to a moment. Any logged-in user; author recorded as user_id.
+export async function addComment(
+  momentId: number,
+  body: string,
+): Promise<ActionResult> {
+  const { user, supabase } = await requireUser();
+
+  const text = body.trim();
+  if (!text) return { ok: false, message: "Comment can't be empty." };
+  if (text.length > 1000) {
+    return { ok: false, message: "Comment is too long (max 1000 characters)." };
+  }
+
+  const { error } = await supabase.from("moment_comments").insert({
+    moment_id: momentId,
+    user_id: user.id,
+    body: text,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/moments");
+  return { ok: true, message: "Comment posted." };
+}
+
+// Delete a comment. Allowed if it's the current user's own OR the user is admin.
+// Re-checked server-side here; RLS enforces the same rule as a backstop.
+export async function deleteComment(commentId: number): Promise<ActionResult> {
+  const { user, supabase } = await requireUser();
+
+  const { data: row, error: loadErr } = await supabase
+    .from("moment_comments")
+    .select("user_id")
+    .eq("id", commentId)
+    .single();
+  if (loadErr || !row) return { ok: false, message: "Comment not found." };
+
+  if (row.user_id !== user.id) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+    if (!profile?.is_admin) {
+      return { ok: false, message: "You can't delete this comment." };
+    }
+  }
+
+  const { error } = await supabase
+    .from("moment_comments")
+    .delete()
+    .eq("id", commentId);
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/moments");
+  return { ok: true, message: "Comment deleted." };
 }

@@ -103,6 +103,29 @@ export interface Moment {
   created_at: string;
 }
 
+// A like on a moment — count only, one per user (unique(moment_id, user_id)).
+export interface MomentLike {
+  id: number;
+  moment_id: number;
+  user_id: string;
+}
+
+// A comment on a moment. Anyone logged-in adds; author or admin deletes.
+export interface MomentComment {
+  id: number;
+  moment_id: number;
+  user_id: string;
+  body: string;
+  created_at: string;
+}
+
+// A comment enriched with its author's display name + username, for the feed UI.
+export interface MomentCommentView extends MomentComment {
+  name: string;
+  username: string;
+  mine: boolean;
+}
+
 export interface LeaderboardRow {
   user_id: string;
   name: string;

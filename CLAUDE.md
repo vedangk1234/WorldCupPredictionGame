@@ -152,6 +152,15 @@ Defined in `supabase/schema.sql`. Summary:
   (50MB limit, allows `image/png`/`image/jpeg`/`video/mp4`), the `public.moments`
   table, and RLS (authenticated SELECT; only `is_admin()` INSERT/DELETE) plus matching
   `storage.objects` policies.
+- **moment_likes** — likes on a moment, **count only** (no liker names shown):
+  `moment_id`, `user_id`, `unique(moment_id, user_id)` (one like per user, toggleable).
+- **moment_comments** — comments on a moment: `moment_id`, `user_id`, `body` (≤1000
+  chars), `created_at`. Any logged-in user adds; author **or** admin deletes; comments
+  are **not** likeable. **Manual Supabase setup these two depend on:** the
+  `public.moment_likes` and `public.moment_comments` tables with `ON DELETE CASCADE` from
+  `moments` (so deleting a moment removes its likes+comments — no app code needed), and RLS
+  on both — all authenticated SELECT, a user may INSERT their own (`user_id = auth.uid()`);
+  likes DELETE-own; comments DELETE own **OR** `is_admin()`.
 
 RLS is ON for every table. Key policies:
 - Everyone (authenticated) can read teams/players/matches/match_goals.
@@ -475,3 +484,28 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   row (revalidate). The per-item delete is confirm-gated via the small client
   `app/moments/DeleteMomentButton.tsx` (two-step arm→confirm). `npm run build` clean and all 16
   scoring tests pass.
+- **Moments — likes (count only) + comments (additive):** Each moment now has a like count you
+  can toggle and a comment thread. **No scoring-engine, predictions, leaderboard, or existing-table
+  changes** — relies on two user-created Supabase tables (see the data-model note): `moment_likes`
+  (`moment_id, user_id, unique(moment_id,user_id)`) and `moment_comments` (`moment_id, user_id,
+  body, created_at`), both `ON DELETE CASCADE` from `moments` (deleting a moment removes its
+  likes+comments — no app code), RLS = all authenticated SELECT + INSERT-own; likes DELETE-own,
+  comments DELETE own-OR-`is_admin()`. Added `MomentLike`/`MomentComment`/`MomentCommentView` to
+  `lib/types.ts`. **Data loading** (`app/moments/page.tsx`): after loading moments it batch-loads
+  for all moment ids — `moment_likes (moment_id, user_id)` counted in JS into a per-moment count +
+  a `likedByMe` set; and all `moment_comments` oldest-first, with authors resolved via ONE
+  `profiles` lookup over the distinct comment `user_id`s (no per-moment queries, no FK-embed
+  reliance). Each comment becomes a `MomentCommentView` with `name`/`username` and a `mine` flag
+  (own OR viewer is admin → shows the delete control). **Likes UI** — `app/moments/LikeButton.tsx`
+  (`"use client"`): a pill heart toggle (♥ filled/`--m3` when liked, ♡ outline otherwise) + tabular
+  count, calls `toggleLike(momentId)` and relies on revalidate to refresh. **Comments UI** —
+  `app/moments/Comments.tsx` (`"use client"`): oldest-first list (`Name (@username)` · IST time via
+  `fmtIST` · body) with an inline two-step delete (×) shown only when `mine`, then an "Add a comment"
+  textarea (≤1000, post disabled while empty/pending) calling `addComment`; empty state "No comments
+  yet." **Server actions** (`app/moments/actions.ts`, all `requireUser()`): `toggleLike` — delete the
+  existing `(moment_id,user_id)` like or insert one, swallowing the `23505` unique-violation race;
+  `addComment(momentId, body)` — trim, reject empty/>1000, insert with `user_id` = current user;
+  `deleteComment(commentId)` — load the row, allow if own OR `is_admin()` (RLS enforces too), delete.
+  All revalidate `/moments`. Admin moment upload/delete (`createMoment`/`deleteMoment`,
+  `requireAdmin`) unchanged; moments stay newest-first, comments oldest-first within a moment.
+  `npm run build` clean and all 16 scoring tests pass.

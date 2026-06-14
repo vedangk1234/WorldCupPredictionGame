@@ -2,8 +2,10 @@ import Link from "next/link";
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
 import { fmtIST } from "@/lib/format";
-import type { Moment } from "@/lib/types";
+import type { Moment, MomentCommentView } from "@/lib/types";
 import DeleteMomentButton from "./DeleteMomentButton";
+import LikeButton from "./LikeButton";
+import Comments from "./Comments";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,67 @@ export default async function MomentsPage() {
     .select("*")
     .order("created_at", { ascending: false });
   const moments = (data ?? []) as Moment[];
+
+  // Batch-load likes + comments for all loaded moments (no per-moment queries).
+  const momentIds = moments.map((m) => m.id);
+  const likeCount = new Map<number, number>();
+  const likedByMe = new Set<number>();
+  const commentsByMoment = new Map<number, MomentCommentView[]>();
+
+  if (momentIds.length > 0) {
+    // Likes: pull (moment_id, user_id) for these moments, then count + flag mine.
+    const { data: likeRows } = await supabase
+      .from("moment_likes")
+      .select("moment_id, user_id")
+      .in("moment_id", momentIds);
+    for (const row of likeRows ?? []) {
+      const mid = row.moment_id as number;
+      likeCount.set(mid, (likeCount.get(mid) ?? 0) + 1);
+      if (user && row.user_id === user.id) likedByMe.add(mid);
+    }
+
+    // Comments: load all for these moments oldest-first, then resolve authors via
+    // a single profiles lookup keyed by the distinct user_ids.
+    const { data: commentRows } = await supabase
+      .from("moment_comments")
+      .select("id, moment_id, user_id, body, created_at")
+      .in("moment_id", momentIds)
+      .order("created_at", { ascending: true });
+
+    const authorIds = Array.from(
+      new Set((commentRows ?? []).map((c) => c.user_id as string)),
+    );
+    const authorById = new Map<string, { name: string; username: string }>();
+    if (authorIds.length > 0) {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, name, username")
+        .in("id", authorIds);
+      for (const p of profs ?? []) {
+        authorById.set(p.id as string, {
+          name: p.name as string,
+          username: p.username as string,
+        });
+      }
+    }
+
+    for (const c of commentRows ?? []) {
+      const author = authorById.get(c.user_id as string);
+      const view: MomentCommentView = {
+        id: c.id as number,
+        moment_id: c.moment_id as number,
+        user_id: c.user_id as string,
+        body: c.body as string,
+        created_at: c.created_at as string,
+        name: author?.name ?? "Unknown",
+        username: author?.username ?? "unknown",
+        mine: (user?.id === c.user_id) || isAdmin,
+      };
+      const list = commentsByMoment.get(view.moment_id) ?? [];
+      list.push(view);
+      commentsByMoment.set(view.moment_id, list);
+    }
+  }
 
   return (
     <>
@@ -166,6 +229,16 @@ export default async function MomentsPage() {
                     style={{ display: "block", width: "100%", height: "auto", background: "#000" }}
                   />
                 )}
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 12px" }}>
+                  <LikeButton
+                    momentId={m.id}
+                    likeCount={likeCount.get(m.id) ?? 0}
+                    likedByMe={likedByMe.has(m.id)}
+                  />
+                </div>
+
+                <Comments momentId={m.id} comments={commentsByMoment.get(m.id) ?? []} />
               </article>
             );
           })}
