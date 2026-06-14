@@ -63,6 +63,12 @@ export default async function SiteHeader() {
               >
                 Leaderboard
               </Link>
+              <Link
+                href="/moments"
+                style={{ color: "var(--chalk)", fontWeight: 600, textDecoration: "none" }}
+              >
+                Moments
+              </Link>
               {isAdmin && (
                 <Link
                   href="/admin"

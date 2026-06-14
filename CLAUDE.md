@@ -144,6 +144,14 @@ Defined in `supabase/schema.sql`. Summary:
   `exact_pts`, `scorer_pts`, `underdog_pts`, `total_pts`, plus boolean/count flags
   for the leaderboard count columns.
 - **leaderboard** — a VIEW aggregating `prediction_points` per user.
+- **moments** — the photo/video scrapbook (additive, unrelated to scoring):
+  `id`, `user_id`, `description` (nullable), `file_path` (object key in the public
+  `moments` storage bucket), `media_type` (`image`|`video`), `created_at`. Admin-only
+  upload (PNG/JPG/MP4, 50MB), everyone views newest-first, admin can delete.
+  **Manual Supabase setup it depends on:** a PUBLIC storage bucket named `moments`
+  (50MB limit, allows `image/png`/`image/jpeg`/`video/mp4`), the `public.moments`
+  table, and RLS (authenticated SELECT; only `is_admin()` INSERT/DELETE) plus matching
+  `storage.objects` policies.
 
 RLS is ON for every table. Key policies:
 - Everyone (authenticated) can read teams/players/matches/match_goals.
@@ -437,3 +445,33 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   "Other". No schema, scoring-engine, saved-data, or seed changes. `npm run build` clean and all 16
   scoring tests pass. Acceptance: USA vs Paraguay now shows both squads, grouped by position, on
   both the predictions and admin pages.
+- **Moments (admin photo/video scrapbook — additive):** A shared scrapbook everyone can view and
+  only admins can post to. **No schema-table edits to existing tables, and no scoring-engine,
+  predictions, or leaderboard changes** — it relies on user-created Supabase setup: a PUBLIC
+  storage bucket `moments` (50MB; `image/png`/`image/jpeg`/`video/mp4`) and a `public.moments`
+  table (`id, user_id, description, file_path, media_type, created_at`) with RLS (authenticated
+  SELECT; only `is_admin()` INSERT/DELETE) + matching `storage.objects` policies. Added the
+  `Moment`/`MediaType` types to `lib/types.ts`. **Nav:** `SiteHeader` gains a logged-in "Moments"
+  link (→ `/moments`) beside Leaderboard, same styling. **View page** `app/moments/page.tsx`
+  (server, `force-dynamic`, `requireUser()`): loads all `moments` rows ordered `created_at` DESC,
+  builds each public URL via `supabase.storage.from('moments').getPublicUrl(file_path)`, and
+  renders a mobile-first single-column feed (max ~700px, generous vertical spacing), newest on
+  top — description above the media, `<img loading="lazy">` for images / `<video controls
+  playsInline preload="metadata">` for video, with the IST timestamp via `fmtIST`. Has a "← Home"
+  link; admins also see an "Upload a moment" button (→ `/moments/new`) and a per-item "Delete"
+  control; empty state "No moments yet." **Upload page** `app/moments/new/page.tsx` (server,
+  `requireAdmin()` — redirects non-admins) renders the client `app/moments/UploadForm.tsx`
+  (`"use client"`, BROWSER supabase client): a description textarea (optional) + a file input
+  (`image/png,image/jpeg,video/mp4`); on submit it client-validates (file present, type ∈
+  {png,jpg,mp4} → "Only PNG, JPG, or MP4", size ≤ 50MB → "max 50MB"), derives `media_type`
+  (image/* → image, video/mp4 → video), uploads to the `moments` bucket under a unique
+  `${Date.now()}-${sanitized name}` key (`cacheControl: '3600', upsert: false`), then calls the
+  `createMoment` server action; on DB-insert failure it deletes the just-uploaded file to avoid
+  orphans; on success redirects to `/moments`. Shows an "Uploading…" disabled state. **Server
+  actions** `app/moments/actions.ts` (`"use server"`): `createMoment(description, file_path,
+  media_type)` — `requireAdmin()`, validates `media_type` ∈ {image,video} + non-empty path,
+  inserts the row (`user_id` = current admin), `revalidatePath('/moments')`; `deleteMoment(id)` —
+  `requireAdmin()`, loads the row's `file_path`, removes the storage object first then deletes the
+  row (revalidate). The per-item delete is confirm-gated via the small client
+  `app/moments/DeleteMomentButton.tsx` (two-step arm→confirm). `npm run build` clean and all 16
+  scoring tests pass.

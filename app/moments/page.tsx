@@ -1,0 +1,176 @@
+import Link from "next/link";
+import SiteHeader from "@/app/components/SiteHeader";
+import { requireUser } from "@/lib/auth";
+import { fmtIST } from "@/lib/format";
+import type { Moment } from "@/lib/types";
+import DeleteMomentButton from "./DeleteMomentButton";
+
+export const dynamic = "force-dynamic";
+
+const MOMENTS_BUCKET = "moments";
+
+// The shared photo/video scrapbook. Any logged-in user can view; only admins
+// can upload (/moments/new) or delete. Newest first, single-column feed.
+export default async function MomentsPage() {
+  const { supabase } = await requireUser();
+
+  // Is the viewer an admin? Decides whether upload/delete controls render.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+    isAdmin = profile?.is_admin ?? false;
+  }
+
+  const { data, error } = await supabase
+    .from("moments")
+    .select("*")
+    .order("created_at", { ascending: false });
+  const moments = (data ?? []) as Moment[];
+
+  return (
+    <>
+      <SiteHeader />
+      <main style={{ maxWidth: 700, margin: "0 auto", padding: "32px 20px 96px" }}>
+        <Link
+          href="/"
+          style={{
+            display: "inline-block",
+            color: "var(--chalk-dim)",
+            textDecoration: "none",
+            fontSize: 13.5,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          ← Home
+        </Link>
+
+        <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18, maxWidth: 120 }} />
+        <p
+          style={{
+            color: "var(--gold-400)",
+            letterSpacing: "0.18em",
+            fontSize: 12,
+            fontWeight: 700,
+            margin: 0,
+          }}
+        >
+          FIFA WORLD CUP 2026 · THE GROUP
+        </p>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 14,
+            flexWrap: "wrap",
+            margin: "8px 0 24px",
+          }}
+        >
+          <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: 0 }}>
+            Moments
+          </h1>
+          {isAdmin && (
+            <Link
+              href="/moments/new"
+              style={{
+                background: "var(--gold-400)",
+                color: "#1a1206",
+                fontWeight: 700,
+                textDecoration: "none",
+                borderRadius: 9,
+                padding: "9px 16px",
+                fontSize: 14,
+              }}
+            >
+              Upload a moment
+            </Link>
+          )}
+        </div>
+
+        {error && (
+          <p style={{ color: "var(--m3)" }}>Failed to load moments: {error.message}</p>
+        )}
+
+        {!error && moments.length === 0 && (
+          <p style={{ color: "var(--chalk-dim)", fontSize: 15 }}>No moments yet.</p>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
+          {moments.map((m) => {
+            const {
+              data: { publicUrl },
+            } = supabase.storage.from(MOMENTS_BUCKET).getPublicUrl(m.file_path);
+
+            return (
+              <article
+                key={m.id}
+                style={{
+                  background: "var(--pitch-900)",
+                  border: "1px solid var(--pitch-line)",
+                  borderRadius: 16,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "12px 16px",
+                  }}
+                >
+                  <span style={{ color: "var(--chalk-dim)", fontSize: 12.5 }}>
+                    {fmtIST(m.created_at)}
+                  </span>
+                  {isAdmin && <DeleteMomentButton id={m.id} />}
+                </div>
+
+                {m.description && (
+                  <p
+                    style={{
+                      margin: 0,
+                      padding: "0 16px 14px",
+                      color: "var(--chalk)",
+                      fontSize: 15.5,
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {m.description}
+                  </p>
+                )}
+
+                {m.media_type === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={publicUrl}
+                    alt={m.description ?? "Moment"}
+                    loading="lazy"
+                    style={{ display: "block", width: "100%", height: "auto" }}
+                  />
+                ) : (
+                  <video
+                    src={publicUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    style={{ display: "block", width: "100%", height: "auto", background: "#000" }}
+                  />
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </main>
+    </>
+  );
+}

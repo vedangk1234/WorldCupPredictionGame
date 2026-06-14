@@ -90,6 +90,19 @@ export interface GoalEntry {
   is_own_goal: boolean;
 }
 
+// A moment in the photo/video scrapbook. Admin-only upload; everyone views.
+// `file_path` is the object key inside the public "moments" storage bucket.
+export type MediaType = "image" | "video";
+
+export interface Moment {
+  id: number;
+  user_id: string;
+  description: string | null;
+  file_path: string;
+  media_type: MediaType;
+  created_at: string;
+}
+
 export interface LeaderboardRow {
   user_id: string;
   name: string;
