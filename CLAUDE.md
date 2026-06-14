@@ -509,3 +509,4 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   All revalidate `/moments`. Admin moment upload/delete (`createMoment`/`deleteMoment`,
   `requireAdmin`) unchanged; moments stay newest-first, comments oldest-first within a moment.
   `npm run build` clean and all 16 scoring tests pass.
+- Added Vercel Web Analytics (`<Analytics/>` in root layout) for page-view/visitor stats.
