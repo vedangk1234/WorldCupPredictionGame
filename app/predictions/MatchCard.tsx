@@ -158,6 +158,8 @@ export default function MatchCard(props: Props) {
   );
   const [trimNote, setTrimNote] = useState<string | null>(null);
   const [confirmingLock, setConfirmingLock] = useState(false);
+  // Finished matches collapse to a compact result bar; this toggles its detail.
+  const [detailOpen, setDetailOpen] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -240,6 +242,156 @@ export default function MatchCard(props: Props) {
   const dim = state === "finished";
   const highlight = state === "open" && isNextOpen;
 
+  // FINISHED: compact result bar (collapsed) + a separate, independently
+  // collapsed match-leaderboard. Both closed by default to save vertical space.
+  // Open/Locked/Closed cards are untouched (the main return below).
+  if (state === "finished") {
+    const hasScore = props.finalScoreA !== null && props.finalScoreB !== null;
+    return (
+      <div style={{ ...card, padding: 14, opacity: 0.74 }}>
+        {/* Result bar — collapsed by default; tap to reveal the full detail. */}
+        <button
+          type="button"
+          onClick={() => setDetailOpen((v) => !v)}
+          aria-expanded={detailOpen}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            color: "var(--chalk)",
+            cursor: "pointer",
+            padding: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            textAlign: "left",
+          }}
+        >
+          <span style={{ color: "var(--gold-300)", fontSize: 14, flexShrink: 0 }}>
+            {detailOpen ? "▾" : "▸"}
+          </span>
+          <span
+            className="display"
+            style={{
+              flex: "1 1 auto",
+              fontSize: 15.5,
+              fontWeight: 800,
+              lineHeight: 1.3,
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "baseline",
+              gap: "0 8px",
+            }}
+          >
+            <span>
+              {flag(teamA)}
+              {teamA.name}
+            </span>
+            <span className="tnum" style={{ color: "var(--gold-300)" }}>
+              {hasScore ? `${props.finalScoreA}–${props.finalScoreB}` : "–"}
+            </span>
+            <span>
+              {flag(teamB)}
+              {teamB.name}
+            </span>
+          </span>
+          <StateBadge state={state} isNextOpen={isNextOpen} />
+        </button>
+
+        {/* Full finished detail — same content as before, behind the toggle. */}
+        {detailOpen && (
+          <div style={{ marginTop: 14 }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "2px 12px",
+                fontSize: 12.5,
+                color: "var(--chalk-dim)",
+              }}
+            >
+              <span>
+                Group {props.groupLetter ?? "—"}
+                {props.matchday ? ` · MD ${props.matchday}` : ""}
+              </span>
+              <span>Kickoff {fmtIST(props.kickoffAt)}</span>
+              <span>Closes {fmtISTTime(props.closeAt)}</span>
+            </div>
+
+            {hasScore && (
+              <div
+                className="display"
+                style={{
+                  marginTop: 12,
+                  fontSize: 16,
+                  color: "var(--gold-300)",
+                  fontWeight: 800,
+                }}
+              >
+                Full time: {teamA.name} {props.finalScoreA}–{props.finalScoreB} {teamB.name}
+              </div>
+            )}
+
+            <ScorersSummary goals={goals} teamA={teamA} teamB={teamB} />
+
+            {underdog && (
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 13,
+                  color: "var(--gold-300)",
+                  background: "rgba(243,201,105,0.1)",
+                  border: "1px solid rgba(243,201,105,0.4)",
+                  borderRadius: 8,
+                  padding: "7px 11px",
+                }}
+              >
+                ⚡ Underdog: {flag(underdog)}
+                {underdog.name} · back them to win for <strong>+5</strong>
+              </div>
+            )}
+
+            <div style={{ marginTop: 16 }}>
+              {myPrediction ? (
+                <div
+                  style={{
+                    background: "var(--pitch-950)",
+                    border: "1px solid var(--pitch-line)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "var(--chalk-dim)", marginBottom: 4 }}>
+                    Your prediction {myPrediction.locked ? "🔒" : ""}
+                  </div>
+                  <div className="display" style={{ fontSize: 18, fontWeight: 800 }}>
+                    {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
+                  </div>
+                  <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} />
+                </div>
+              ) : (
+                <div style={{ fontSize: 13.5, color: "var(--chalk-dim)" }}>
+                  No prediction from you for this match.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Separate, independently-collapsed per-match leaderboard. */}
+        <MatchLeaderboard
+          teamA={teamA}
+          teamB={teamB}
+          squadA={squadA}
+          squadB={squadB}
+          points={matchPoints}
+          reveal={reveal}
+          currentUserId={currentUserId}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -290,26 +442,6 @@ export default function MatchCard(props: Props) {
         </div>
         <StateBadge state={state} isNextOpen={isNextOpen} />
       </div>
-
-      {/* Final score for finished matches */}
-      {state === "finished" && props.finalScoreA !== null && props.finalScoreB !== null && (
-        <div
-          className="display"
-          style={{
-            marginTop: 12,
-            fontSize: 16,
-            color: "var(--gold-300)",
-            fontWeight: 800,
-          }}
-        >
-          Full time: {teamA.name} {props.finalScoreA}–{props.finalScoreB} {teamB.name}
-        </div>
-      )}
-
-      {/* Scorers line (finished only) */}
-      {state === "finished" && (
-        <ScorersSummary goals={goals} teamA={teamA} teamB={teamB} />
-      )}
 
       {/* Underdog tag */}
       {underdog && (
@@ -606,26 +738,11 @@ export default function MatchCard(props: Props) {
             </div>
           )}
 
-          {state === "finished" ? (
-            /* Finished → points-breakdown leaderboard with click-to-expand. */
-            <MatchLeaderboard
-              teamA={teamA}
-              teamB={teamB}
-              squadA={squadA}
-              squadB={squadB}
-              points={matchPoints}
-              reveal={reveal}
-              currentUserId={currentUserId}
-            />
-          ) : (
-            /* Locked / Closed → no result yet: the plain reveal list. */
-            <>
-              <RevealSection reveal={reveal} playerName={playerName} teamA={teamA} teamB={teamB} />
-              <p style={{ fontSize: 12, color: "var(--chalk-dim)", marginTop: 10, opacity: 0.85 }}>
-                Results pending — points appear once the match is finished.
-              </p>
-            </>
-          )}
+          {/* Locked / Closed → no result yet: the plain reveal list. */}
+          <RevealSection reveal={reveal} playerName={playerName} teamA={teamA} teamB={teamB} />
+          <p style={{ fontSize: 12, color: "var(--chalk-dim)", marginTop: 10, opacity: 0.85 }}>
+            Results pending — points appear once the match is finished.
+          </p>
         </div>
       )}
     </div>
