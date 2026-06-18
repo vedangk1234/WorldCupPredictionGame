@@ -1,5 +1,6 @@
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
+import { computeRound2MatchIds } from "@/lib/round2";
 import MatchCard from "./MatchCard";
 import type {
   MatchState,
@@ -40,6 +41,7 @@ interface PredRow {
   score_a: number;
   score_b: number;
   locked: boolean;
+  used_2x: boolean;
   prediction_scorers: { player_id: number }[] | null;
 }
 
@@ -88,14 +90,30 @@ export default async function PredictionsPage() {
     .order("kickoff_at", { ascending: true });
   const matches = (matchesData ?? []) as unknown as MatchRow[];
 
+  // Round-2 match ids (by kickoff order) for "2x" eligibility — single source of
+  // truth shared with the lock server action. A match is 2x-eligible only if it
+  // is round-2 AND has no underdog (CLAUDE.md "2x tokens").
+  const round2Ids = computeRound2MatchIds(
+    matches.map((m) => ({
+      id: m.id,
+      team_a_id: (m.team_a?.id ?? -1) as number,
+      team_b_id: (m.team_b?.id ?? -2) as number,
+      kickoff_at: m.kickoff_at,
+    })),
+  );
+
   // The current user's own predictions (+ backed scorers) across all matches.
   const { data: myPredsData } = await supabase
     .from("predictions")
-    .select("id, user_id, match_id, score_a, score_b, locked, prediction_scorers(player_id)")
+    .select("id, user_id, match_id, score_a, score_b, locked, used_2x, prediction_scorers(player_id)")
     .eq("user_id", user.id);
   const myPreds = (myPredsData ?? []) as unknown as PredRow[];
   const myPredByMatch = new Map<number, PredRow>();
   for (const p of myPreds) myPredByMatch.set(p.match_id, p);
+
+  // How many "2x" doublers the user has spent (locked predictions with 2x on).
+  // Used to show "X/3 used" and disable the toggle once all 3 are spent.
+  const myTokensUsed = myPreds.filter((p) => p.locked && p.used_2x).length;
 
   // Every player (id → squad info) for the scorer dropdowns and name lookups.
   // Picks are always from the two squads, so this covers every referenced id.
@@ -144,7 +162,7 @@ export default async function PredictionsPage() {
   if (revealedIds.length > 0) {
     const { data: allPredsData } = await supabase
       .from("predictions")
-      .select("id, user_id, match_id, score_a, score_b, locked, prediction_scorers(player_id)")
+      .select("id, user_id, match_id, score_a, score_b, locked, used_2x, prediction_scorers(player_id)")
       .in("match_id", revealedIds);
     revealRows = (allPredsData ?? []) as unknown as PredRow[];
 
@@ -169,6 +187,14 @@ export default async function PredictionsPage() {
     revealByMatch.set(r.match_id, list);
   }
 
+  // (matchId, userId) → used_2x, for tagging points/reveal rows with the doubler.
+  // prediction_points doesn't store used_2x; the revealed predictions do.
+  const used2xKey = (matchId: number, userId: string) => `${matchId}:${userId}`;
+  const used2xByMatchUser = new Map<string, boolean>();
+  for (const r of revealRows) {
+    used2xByMatchUser.set(used2xKey(r.match_id, r.user_id), r.used_2x);
+  }
+
   // Points breakdown for finished matches (one query, RLS allows all to read).
   // Rows exist only for finished matches and only for locked predictions.
   const finishedIds = matches.filter((m) => m.finished).map((m) => m.id);
@@ -191,6 +217,7 @@ export default async function PredictionsPage() {
         scorerPts: row.scorer_pts,
         underdogPts: row.underdog_pts,
         totalPts: row.total_pts,
+        used2x: used2xByMatchUser.get(used2xKey(row.match_id, row.user_id)) ?? false,
       });
       pointsByMatch.set(row.match_id, list);
     }
@@ -327,8 +354,11 @@ export default async function PredictionsPage() {
                   scoreB: mine.score_b,
                   locked: mine.locked,
                   scorerIds: (mine.prediction_scorers ?? []).map((s) => s.player_id),
+                  used2x: mine.used_2x,
                 }
               : null;
+
+            const isRound2 = round2Ids.has(m.id);
 
             // Build the reveal list (only populated for revealed matches).
             const reveal: RevealRow[] =
@@ -343,6 +373,7 @@ export default async function PredictionsPage() {
                       scoreA: r.score_a,
                       scoreB: r.score_b,
                       scorerIds: (r.prediction_scorers ?? []).map((s) => s.player_id),
+                      used2x: r.used_2x,
                       isMe: r.user_id === user.id,
                     };
                   });
@@ -365,6 +396,8 @@ export default async function PredictionsPage() {
                 myPrediction={myPrediction}
                 state={state}
                 isNextOpen={m.id === nextOpenId}
+                isRound2={isRound2}
+                tokensUsed={myTokensUsed}
                 reveal={reveal}
                 matchPoints={pointsByMatch.get(m.id) ?? []}
                 goals={goalsByMatch.get(m.id) ?? []}

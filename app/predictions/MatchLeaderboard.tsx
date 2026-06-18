@@ -139,7 +139,7 @@ function MatchLeaderboardTable({
           }}
         >
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", minWidth: 480, borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ color: "var(--chalk-dim)" }}>
                   <th style={{ ...cell, textAlign: "left", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase" }}>
@@ -150,6 +150,7 @@ function MatchLeaderboardTable({
                   <th style={{ ...cell, fontSize: 11 }}>Exact</th>
                   <th style={{ ...cell, fontSize: 11 }}>Scor</th>
                   <th style={{ ...cell, fontSize: 11 }}>Udog</th>
+                  <th style={{ ...cell, fontSize: 11 }}>2x</th>
                   <th style={{ ...cell, fontSize: 11 }}>Total</th>
                 </tr>
               </thead>
@@ -223,6 +224,15 @@ function RowGroup({
         <td className="tnum" style={cell}>{r.scorerPts}</td>
         <td className="tnum" style={cell}>{r.underdogPts}</td>
         <td
+          style={{
+            ...cell,
+            fontWeight: 700,
+            color: r.used2x ? "var(--gold-300)" : "var(--chalk-dim)",
+          }}
+        >
+          {r.used2x ? "Yes ⚡" : "No"}
+        </td>
+        <td
           className="display tnum"
           style={{ ...cell, color: "var(--gold-300)", fontWeight: 800, fontSize: 15 }}
         >
@@ -231,7 +241,7 @@ function RowGroup({
       </tr>
       {isOpen && (
         <tr style={{ background: rowBg }}>
-          <td colSpan={7} style={{ padding: "0 10px 12px" }}>
+          <td colSpan={8} style={{ padding: "0 10px 12px" }}>
             <div
               style={{
                 background: "var(--pitch-950)",

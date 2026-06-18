@@ -56,6 +56,9 @@ export interface Prediction {
   score_b: number;
   locked: boolean;
   locked_at: string | null;
+  // "2x" doubler — opt-in, chosen at lock time only, permanent once locked.
+  // Doubles total_pts for this match (CLAUDE.md "2x tokens").
+  used_2x: boolean;
 }
 
 export interface PredictionScorer {
@@ -136,4 +139,6 @@ export interface LeaderboardRow {
   exact_count: number;
   scorers_count: number;
   underdog_count: number;
+  // Count of this user's locked predictions with used_2x=true (0–3).
+  twox_used: number;
 }

@@ -163,9 +163,10 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
 
   // Only LOCKED predictions count. (After a match is played its close time has
   // passed, so the reveal-by-close RLS clause lets the admin read them all.)
+  // used_2x is read fresh each recompute so the doubling stays idempotent.
   const { data: preds, error: predErr } = await supabase
     .from("predictions")
-    .select("id, user_id, score_a, score_b, prediction_scorers(player_id)")
+    .select("id, user_id, score_a, score_b, used_2x, prediction_scorers(player_id)")
     .eq("match_id", matchId)
     .eq("locked", true);
   if (predErr) throw new Error(predErr.message);
@@ -193,6 +194,12 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
       teamBId: match.team_b_id as number,
       underdogTeamId: (match.underdog_team_id as number | null) ?? null,
     });
+    // 2x doubling is applied HERE, in the recompute layer — never inside the
+    // pure scoring engine. Only the points TOTAL doubles (negatives too: −1 →
+    // −2). The component columns and tally booleans/counts stay RAW so the
+    // tallies remain honest (CLAUDE.md "2x tokens").
+    const used2x = (p.used_2x as boolean) ?? false;
+    const totalPts = used2x ? res.totalPts * 2 : res.totalPts;
     return {
       prediction_id: p.id as number,
       user_id: p.user_id as string,
@@ -202,7 +209,7 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
       exact_pts: res.exactPts,
       scorer_pts: res.scorerPts,
       underdog_pts: res.underdogPts,
-      total_pts: res.totalPts,
+      total_pts: totalPts,
       got_winner: res.gotWinner,
       got_gd: res.gotGd,
       got_exact: res.gotExact,

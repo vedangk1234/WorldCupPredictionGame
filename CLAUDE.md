@@ -110,6 +110,30 @@ matches are always "Team A vs Team B", shown by name only.
 - **Finished:** admin entered a result → match is greyed out (still clickable to
   view), points recomputed, next match highlighted.
 
+### 2.7 2x tokens (doublers)
+
+- Each user gets **3 "2x" tokens** for the whole tournament.
+- A 2x may **only** be used on a **second-round match**. The `matchday` column is
+  unreliable, so eligibility is computed by **kickoff order**: a match is "round 2"
+  if, for **both** its teams, it is that team's 2nd match ordered by `kickoff_at`
+  (the SQL `row_number() over (partition by team order by kickoff_at) = 2` for both
+  teams). `lib/round2.ts → computeRound2MatchIds()` is the single source of truth,
+  used on the predictions page (UI) and re-checked in the lock action (authority).
+- A match is **2x-eligible** only if it is round-2 **AND** has **no underdog**
+  (`underdog_team_id` is null). Round-2 matches with an underdog are not eligible.
+- 2x is chosen at **lock time only**, defaults to **NO** (opt-in), and becomes
+  **permanent** when the prediction is locked (cannot be changed after, exactly
+  like the score). It is part of the lock action — not a separate later toggle.
+  Stored on `predictions.used_2x` (only ever set true via a lock; drafts stay false).
+- A doubled match doubles the **points TOTAL including negatives** (−1 → −2). Only
+  `prediction_points.total_pts` doubles — applied in the **recompute layer**
+  (`app/admin/actions.ts`), never in the pure engine. The component columns
+  (`winner_pts`/`gd_pts`/`exact_pts`/`scorer_pts`/`underdog_pts`) and the tally
+  booleans/counts stay **raw** so the tallies remain honest.
+- Surfaced in both leaderboards (match: a "2x" Yes/No column + the already-doubled
+  match total; overall: a `twox_used` count column 0–3 from the `leaderboard` view)
+  and in the reveal (a "⚡2x" marker beside players who doubled that match).
+
 ---
 
 ## 3. Auth
@@ -138,12 +162,15 @@ Defined in `supabase/schema.sql`. Summary:
   `match_id`, `player_id`, `minute` (text, display-only — does NOT affect scoring),
   `is_own_goal`.
 - **predictions** — `user_id`, `match_id`, `score_a`, `score_b`, `locked`,
-  `locked_at`. Unique on (`user_id`, `match_id`).
+  `locked_at`, `used_2x` (bool, default false — the 2x doubler, set true only at
+  lock; see §2.7). Unique on (`user_id`, `match_id`).
 - **prediction_scorers** — `prediction_id`, `player_id`.
 - **prediction_points** — computed per prediction: `winner_pts`, `gd_pts`,
   `exact_pts`, `scorer_pts`, `underdog_pts`, `total_pts`, plus boolean/count flags
-  for the leaderboard count columns.
-- **leaderboard** — a VIEW aggregating `prediction_points` per user.
+  for the leaderboard count columns. `total_pts` is doubled when the prediction's
+  `used_2x` is true (the components/flags stay raw — see §2.7).
+- **leaderboard** — a VIEW aggregating `prediction_points` per user; also exposes
+  `twox_used` (count of the user's locked predictions with `used_2x` = true, 0–3).
 - **moments** — the photo/video scrapbook (additive, unrelated to scoring):
   `id`, `user_id`, `description` (nullable), `file_path` (object key in the public
   `moments` storage bucket), `media_type` (`image`|`video`), `created_at`. Admin-only
@@ -511,3 +538,31 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `npm run build` clean and all 16 scoring tests pass.
 - Added Vercel Web Analytics (`<Analytics/>` in root layout) for page-view/visitor stats.
 - Finished matches now render as two collapsibles (compact result bar + separate View-match-leaderboard), both collapsed by default, to save vertical space; open/upcoming matches unchanged. **Display/UI only — no schema, scoring-engine, prediction/lock/reveal, or data-loading changes.** In `app/predictions/MatchCard.tsx` the `finished` state now early-returns a dedicated layout: a clickable **result bar** (▸/▾ chevron + "🇧🇷 Brazil 1–1 🇲🇦 Morocco" with the score in gold + a "Finished" badge, flex-wrapping on narrow screens), collapsed by default via a new local `detailOpen` state. Expanding it reveals the exact detail shown before — header meta (group · MD · IST kickoff · closes), "Full time: …", the `ScorersSummary` line (grouped by team, OG marked), the underdog tag, and the user's own locked prediction + backed scorers. Directly beneath the bar, the existing `MatchLeaderboard` (its own "View match leaderboard ▸/▾" toggle, also collapsed by default) renders independently — opening one does not open the other. The now-unreachable `state === "finished"` branches in the main (open/locked/closed) return were removed (final-score block, scorers line, and the readonly finished/else ternary — locked/closed keep the plain reveal list + "Results pending" note). `npx tsc --noEmit` clean and all 16 scoring tests pass.
+- **2x tokens (doublers) — feature (see §2.7):** Each user gets **3 "2x" tokens** usable only on
+  **second-round, non-underdog** matches; chosen at lock (permanent, opt-in default No); doubles the
+  match points **total** incl. negatives; tallies untouched. **Scoring engine `lib/scoring.ts` pure
+  math is UNCHANGED** — doubling lives in the recompute layer. **Prereq (already run in Supabase):**
+  `predictions.used_2x boolean default false` and the `leaderboard` view exposing `twox_used` (count
+  of locked predictions with `used_2x` per user). New `lib/round2.ts → computeRound2MatchIds(matches)`
+  is the single source of truth for round-2 eligibility — derived by KICKOFF ORDER (a match is round-2
+  iff it is the 2nd match by `kickoff_at` for BOTH teams; the `matchday` column is unreliable), used on
+  the predictions page (UI) and re-checked in the lock action (authority). `lib/types.ts`: added
+  `Prediction.used_2x` and `LeaderboardRow.twox_used`. **Server** (`app/predictions/actions.ts`):
+  `lockPrediction` (and the `writePrediction` helper) take a `use2x` boolean — `used_2x` is only ever
+  set true via a lock (the unlocked upsert forces it false). When `use2x` at lock, it asserts the match
+  is 2x-eligible (round-2 AND `underdog_team_id` null — else rejects, with the underdog case messaged
+  "You cannot set 2x for matches where there is an underdog") and that the user has < 3 OTHER locked
+  `used_2x` predictions (counted server-side), then sets `locked + used_2x` atomically. **Recompute**
+  (`app/admin/actions.ts`): `recomputeMatch` now selects `used_2x` per prediction and, after calling
+  the unchanged `scorePrediction`, stores `total_pts = rawTotal * 2` when `used_2x` (negatives doubled);
+  the component columns and tally booleans/counts stay RAW — idempotent (re-reads `used_2x` each run).
+  **UI** (`app/predictions/MatchCard.tsx`): below goal-scorers, eligible Open matches show a
+  `TwoXControl` (Yes/No, default No, "2x used: X/3"; Yes disabled with "No 2x left" once 3 are spent);
+  round-2 WITH underdog shows the "cannot set 2x" note; round-1/3 show nothing. The lock confirm reflects
+  the choice ("…with 2x ON — this uses one of your 3 doublers…"); once locked a static `TwoXIndicator`
+  ("2x: ON ⚡" / "2x: OFF") shows on the card. The page passes `isRound2` + `tokensUsed` and threads
+  `used_2x` onto `CardPrediction`/`RevealRow`/`MatchPointsRow`. **Leaderboards:** `MatchLeaderboard.tsx`
+  gains a "2x" Yes/No column (Yes rows already show the doubled total; colSpan bumped 7→8);
+  `app/leaderboard/page.tsx` gains a "2x used" count column from `twox_used` (Total already reflects
+  doubling). **Reveal:** a "⚡2x" marker (`TwoXTag`) renders beside players who doubled a match (reveal
+  list + the match leaderboard's 2x column). `npm run build` clean and all 16 scoring tests pass.

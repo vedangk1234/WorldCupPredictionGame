@@ -21,6 +21,7 @@ export interface CardPrediction {
   scoreB: number;
   locked: boolean;
   scorerIds: number[];
+  used2x: boolean;
 }
 
 export interface RevealRow {
@@ -30,6 +31,7 @@ export interface RevealRow {
   scoreA: number;
   scoreB: number;
   scorerIds: number[];
+  used2x: boolean;
   isMe: boolean;
 }
 
@@ -45,6 +47,9 @@ export interface MatchPointsRow {
   scorerPts: number;
   underdogPts: number;
   totalPts: number;
+  // Did this player use a "2x" doubler on this match? If so totalPts is already
+  // the doubled value (the doubling is applied in the recompute layer).
+  used2x: boolean;
 }
 
 export interface CardTeam {
@@ -80,6 +85,11 @@ interface Props {
   myPrediction: CardPrediction | null;
   state: MatchState;
   isNextOpen: boolean;
+  // "2x" eligibility inputs. isRound2 is computed by kickoff order server-side;
+  // a match is 2x-eligible when isRound2 AND there is no underdog. tokensUsed is
+  // how many of the user's 3 doublers are already spent (across all matches).
+  isRound2: boolean;
+  tokensUsed: number;
   reveal: RevealRow[];
   matchPoints: MatchPointsRow[];
   goals: MatchGoalRow[];
@@ -139,6 +149,8 @@ export default function MatchCard(props: Props) {
     myPrediction,
     state,
     isNextOpen,
+    isRound2,
+    tokensUsed,
     reveal,
     matchPoints,
     goals,
@@ -146,6 +158,12 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
+
+  // 2x eligibility (CLAUDE.md "2x tokens"): round-2 AND no underdog. A round-2
+  // match WITH an underdog shows an explanatory note instead of the toggle;
+  // round-1/3 show no 2x UI at all.
+  const twoxEligible = isRound2 && !underdog;
+  const TOKENS_MAX = 3;
 
   const [scoreA, setScoreA] = useState(
     myPrediction ? String(myPrediction.scoreA) : "",
@@ -157,6 +175,8 @@ export default function MatchCard(props: Props) {
     (myPrediction?.scorerIds ?? []).map((playerId) => ({ uid: uidSeq++, playerId })),
   );
   const [trimNote, setTrimNote] = useState<string | null>(null);
+  // 2x doubler choice — opt-in, defaults to NO, only ever sent at lock time.
+  const [use2x, setUse2x] = useState(false);
   const [confirmingLock, setConfirmingLock] = useState(false);
   // Finished matches collapse to a compact result bar; this toggles its detail.
   const [detailOpen, setDetailOpen] = useState(false);
@@ -232,8 +252,10 @@ export default function MatchCard(props: Props) {
       setMsg({ ok: false, text: "Enter both scores as whole numbers (0 or more)." });
       return;
     }
+    // Only send 2x when this match is eligible — guards against a stale toggle.
+    const send2x = twoxEligible && use2x;
     startTransition(async () => {
-      const res = await lockPrediction(matchId, numA, numB, cleanPicks());
+      const res = await lockPrediction(matchId, numA, numB, cleanPicks(), send2x);
       setConfirmingLock(false);
       setMsg({ ok: res.ok, text: res.message });
     });
@@ -368,6 +390,10 @@ export default function MatchCard(props: Props) {
                     {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
                   </div>
                   <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} />
+                  <TwoXIndicator
+                    used2x={myPrediction.used2x}
+                    show={myPrediction.used2x || twoxEligible}
+                  />
                 </div>
               ) : (
                 <div style={{ fontSize: 13.5, color: "var(--chalk-dim)" }}>
@@ -583,6 +609,32 @@ export default function MatchCard(props: Props) {
             )}
           </div>
 
+          {/* 2x doubler — only on round-2 matches. Eligible (no underdog) shows
+              the Yes/No toggle; round-2 WITH an underdog shows the note. */}
+          {isRound2 &&
+            (twoxEligible ? (
+              <TwoXControl
+                use2x={use2x}
+                setUse2x={setUse2x}
+                tokensUsed={tokensUsed}
+                tokensMax={TOKENS_MAX}
+              />
+            ) : (
+              <div
+                style={{
+                  marginTop: 18,
+                  fontSize: 12.5,
+                  color: "var(--chalk-dim)",
+                  background: "var(--pitch-950)",
+                  border: "1px solid var(--pitch-line)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              >
+                You cannot set 2x for matches where there is an underdog.
+              </div>
+            ))}
+
           {/* Actions */}
           <div
             style={{
@@ -605,7 +657,9 @@ export default function MatchCard(props: Props) {
                 }}
               >
                 <p style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 600 }}>
-                  You can&apos;t edit this after locking. Lock it in?
+                  {twoxEligible && use2x
+                    ? "Lock this prediction with 2x ON — this uses one of your 3 doublers and can't be undone. Continue?"
+                    : "You can't edit this after locking. Lock it in?"}
                 </p>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
@@ -717,6 +771,10 @@ export default function MatchCard(props: Props) {
                 {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
               </div>
               <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} />
+              <TwoXIndicator
+                used2x={myPrediction.used2x}
+                show={myPrediction.used2x || twoxEligible}
+              />
             </div>
           ) : state === "closed" ? (
             <div
@@ -892,6 +950,7 @@ function RevealSection({
                     <span style={{ color: "var(--chalk-dim)", fontWeight: 400 }}> ({r.username})</span>
                   ) : null}
                   {r.isMe ? <span style={{ color: "var(--pitch-500)" }}> · you</span> : null}
+                  {r.used2x ? <TwoXTag /> : null}
                 </span>
                 <span className="display" style={{ fontSize: 14, fontWeight: 800 }}>
                   {teamA.code ?? teamA.name} {r.scoreA}–{r.scoreB} {teamB.code ?? teamB.name}
@@ -916,6 +975,116 @@ const STATE_BADGE: Record<MatchState, { label: string; bg: string; fg: string; b
   closed: { label: "Closed", bg: "rgba(159,179,166,0.12)", fg: "var(--chalk-dim)", border: "var(--pitch-line)" },
   finished: { label: "Finished", bg: "rgba(159,179,166,0.12)", fg: "var(--chalk-dim)", border: "var(--pitch-line)" },
 };
+
+// Open-state 2x toggle (eligible matches only). Yes/No, defaults to No. Shows
+// the remaining-doubler tally and disables Yes once all 3 are spent.
+function TwoXControl({
+  use2x,
+  setUse2x,
+  tokensUsed,
+  tokensMax,
+}: {
+  use2x: boolean;
+  setUse2x: (v: boolean) => void;
+  tokensUsed: number;
+  tokensMax: number;
+}) {
+  const noneLeft = tokensUsed >= tokensMax;
+  // If they've spent all doublers and this match isn't 2x'd, Yes is unavailable.
+  const yesDisabled = noneLeft && !use2x;
+
+  const optBtn = (selected: boolean, disabled: boolean): React.CSSProperties => ({
+    flex: "0 0 auto",
+    background: selected ? "var(--gold-400)" : "transparent",
+    color: selected ? "#1a1206" : "var(--chalk)",
+    border: `1px solid ${selected ? "var(--gold-400)" : "var(--pitch-line)"}`,
+    borderRadius: 8,
+    padding: "7px 18px",
+    fontWeight: 700,
+    fontSize: 13.5,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.45 : 1,
+  });
+
+  return (
+    <div
+      style={{
+        marginTop: 18,
+        background: "rgba(243,201,105,0.07)",
+        border: "1px solid rgba(243,201,105,0.4)",
+        borderRadius: 10,
+        padding: "12px 14px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--gold-300)" }}>
+          ⚡ 2x your points this match?
+        </span>
+        <span style={{ fontSize: 12, color: "var(--chalk-dim)" }} className="tnum">
+          2x used: {tokensUsed}/{tokensMax}
+        </span>
+      </div>
+      <p style={{ color: "var(--chalk-dim)", fontSize: 12, margin: "4px 0 10px" }}>
+        Doubles your total points for this match (negatives too). Locked in permanently — you only
+        get {tokensMax} all tournament.
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" onClick={() => setUse2x(false)} style={optBtn(!use2x, false)}>
+          No
+        </button>
+        <button
+          type="button"
+          onClick={() => !yesDisabled && setUse2x(true)}
+          disabled={yesDisabled}
+          style={optBtn(use2x, yesDisabled)}
+        >
+          Yes
+        </button>
+        {yesDisabled && (
+          <span style={{ fontSize: 12.5, color: "var(--m3)", fontWeight: 600 }}>No 2x left</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Static (read-only) 2x state shown on a locked/closed/finished prediction box.
+function TwoXIndicator({ used2x, show }: { used2x: boolean; show: boolean }) {
+  if (!show) return null;
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        fontSize: 12.5,
+        fontWeight: 700,
+        color: used2x ? "var(--gold-300)" : "var(--chalk-dim)",
+      }}
+    >
+      {used2x ? "2x: ON ⚡" : "2x: OFF"}
+    </div>
+  );
+}
+
+// Small inline "⚡2x" marker beside a player who doubled down on this match.
+function TwoXTag() {
+  return (
+    <span
+      style={{
+        marginLeft: 6,
+        fontSize: 11,
+        fontWeight: 800,
+        color: "var(--gold-300)",
+        background: "rgba(243,201,105,0.14)",
+        border: "1px solid rgba(243,201,105,0.45)",
+        borderRadius: 99,
+        padding: "1px 7px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ⚡2x
+    </span>
+  );
+}
 
 function StateBadge({ state, isNextOpen }: { state: MatchState; isNextOpen: boolean }) {
   const s = STATE_BADGE[state];
