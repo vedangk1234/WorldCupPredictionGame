@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { fmtIST, fmtISTTime } from "@/lib/format";
+import { fmtTime, fmtTimeOnly } from "@/lib/format";
 import { lockPrediction } from "./actions";
 import MatchLeaderboard from "./MatchLeaderboard";
 import { buildScorerGroups } from "@/lib/scorer-options";
@@ -75,6 +75,9 @@ interface Props {
   matchday: number | null;
   kickoffAt: string;
   closeAt: string;
+  // The logged-in user's own display zone (profiles.timezone, default
+  // "Asia/Kolkata"). Display only — the real lock instant is unchanged.
+  userTimeZone: string;
   teamA: CardTeam;
   teamB: CardTeam;
   underdog: CardTeam | null;
@@ -336,8 +339,8 @@ export default function MatchCard(props: Props) {
                 Group {props.groupLetter ?? "—"}
                 {props.matchday ? ` · MD ${props.matchday}` : ""}
               </span>
-              <span>Kickoff {fmtIST(props.kickoffAt)}</span>
-              <span>Closes {fmtISTTime(props.closeAt)}</span>
+              <span>Kickoff {fmtTime(props.kickoffAt, props.userTimeZone)}</span>
+              <span>Closes {fmtTimeOnly(props.closeAt, props.userTimeZone)}</span>
             </div>
 
             {hasScore && (
@@ -462,8 +465,8 @@ export default function MatchCard(props: Props) {
               Group {props.groupLetter ?? "—"}
               {props.matchday ? ` · MD ${props.matchday}` : ""}
             </span>
-            <span>Kickoff {fmtIST(props.kickoffAt)}</span>
-            <span>Closes {fmtISTTime(props.closeAt)}</span>
+            <span>Kickoff {fmtTime(props.kickoffAt, props.userTimeZone)}</span>
+            <span>Closes {fmtTimeOnly(props.closeAt, props.userTimeZone)}</span>
           </div>
         </div>
         <StateBadge state={state} isNextOpen={isNextOpen} />

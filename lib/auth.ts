@@ -5,13 +5,20 @@ import type { Profile } from "@/lib/types";
 
 type ServerClient = ReturnType<typeof createClient>;
 
+// Fallback display zone when a profile has no timezone set.
+const DEFAULT_TIME_ZONE = "Asia/Kolkata";
+
 // Server-side gate for any logged-in user page. Loads the current user from the
 // auth cookie and redirects to "/login" if not signed in. Every user-facing
 // write re-checks via this (or getUser) server-side — the client is never
-// trusted. Returns the user plus the same Supabase client for reuse.
+// trusted. Returns the user, the same Supabase client for reuse, and the user's
+// own display timezone (profiles.timezone; null/empty → "Asia/Kolkata"). The
+// timezone is DISPLAY ONLY — deadlines/locking/scoring run on UTC instants and
+// never read it.
 export async function requireUser(): Promise<{
   user: User;
   supabase: ServerClient;
+  timeZone: string;
 }> {
   const supabase = createClient();
 
@@ -20,7 +27,17 @@ export async function requireUser(): Promise<{
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  return { user, supabase };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .single();
+  const timeZone =
+    profile?.timezone && profile.timezone.trim() !== ""
+      ? profile.timezone
+      : DEFAULT_TIME_ZONE;
+
+  return { user, supabase, timeZone };
 }
 
 // Server-side gate for the admin area. Loads the current user from the auth

@@ -7,6 +7,9 @@ export interface Profile {
   name: string;
   username: string;
   is_admin: boolean;
+  // IANA zone name (e.g. "Europe/Berlin"); defaults to "Asia/Kolkata". Display
+  // only — deadlines/scoring run on UTC instants and ignore this.
+  timezone: string | null;
   created_at: string;
 }
 

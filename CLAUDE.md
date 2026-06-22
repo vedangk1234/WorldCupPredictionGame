@@ -566,3 +566,18 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `app/leaderboard/page.tsx` gains a "2x used" count column from `twox_used` (Total already reflects
   doubling). **Reveal:** a "⚡2x" marker (`TwoXTag`) renders beside players who doubled a match (reveal
   list + the match leaderboard's 2x column). `npm run build` clean and all 16 scoring tests pass.
+- **Match times display in each user's timezone (`profiles.timezone`, default `Asia/Kolkata`) via
+  `fmtTime()`; admin stays IST; deadlines/scoring unchanged.** Presentation layer only — kickoff/close
+  values, the 5-min deadline, server-side lock/reveal checks and the scoring engine all run on UTC
+  instants and are identical for every user. `lib/format.ts` gains `fmtTime(iso, timeZone='Asia/Kolkata')`
+  (full date+time, no zone label) and `fmtTimeOnly(iso, timeZone='Asia/Kolkata')` (time only), each
+  caching a per-zone `Intl.DateTimeFormat('en-IN', …)`; `fmtIST`/`fmtISTTime` are now thin wrappers
+  (`fmtTime(iso,'Asia/Kolkata')` + " IST") kept for the admin area. `lib/types.ts`: `Profile.timezone`
+  (`string | null`). `lib/auth.ts → requireUser()` now also reads `profiles.timezone` (null/empty →
+  `Asia/Kolkata`) and returns it as `timeZone`. User-facing times use the viewer's zone: the predictions
+  page passes `userTimeZone` into `MatchCard` (kickoff via `fmtTime`, close via `fmtTimeOnly`); the moments
+  page formats `created_at` with `fmtTime(…, timeZone)` and threads `userTimeZone` into the `Comments`
+  client component for comment timestamps. **Admin pages (`app/admin/**`) keep `fmtIST`/`fmtISTTime`
+  unchanged — always IST regardless of the admin's own zone.** `MatchLeaderboard.tsx` and
+  `app/leaderboard/page.tsx` show no times, so no change there. `npm run build` clean and all 16 scoring
+  tests pass. (Prereq: `profiles.timezone text default 'Asia/Kolkata'` already added in Supabase.)

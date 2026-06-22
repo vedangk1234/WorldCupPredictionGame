@@ -75,7 +75,7 @@ function matchState(
 }
 
 export default async function PredictionsPage() {
-  const { user, supabase } = await requireUser();
+  const { user, supabase, timeZone } = await requireUser();
 
   // All matches, soonest first, with both teams + underdog joined.
   const { data: matchesData, error: matchErr } = await supabase
@@ -386,6 +386,7 @@ export default async function PredictionsPage() {
                 matchday={m.matchday}
                 kickoffAt={m.kickoff_at}
                 closeAt={m.predictions_close_at}
+                userTimeZone={timeZone}
                 teamA={m.team_a}
                 teamB={m.team_b}
                 underdog={m.underdog}

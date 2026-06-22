@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { fmtIST } from "@/lib/format";
+import { fmtTime } from "@/lib/format";
 import type { MomentCommentView } from "@/lib/types";
 import { addComment, deleteComment } from "./actions";
 
@@ -11,9 +11,12 @@ import { addComment, deleteComment } from "./actions";
 export default function Comments({
   momentId,
   comments,
+  userTimeZone,
 }: {
   momentId: number;
   comments: MomentCommentView[];
+  // Viewer's own display zone (profiles.timezone, default "Asia/Kolkata").
+  userTimeZone: string;
 }) {
   const [body, setBody] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -64,7 +67,7 @@ export default function Comments({
                     </span>
                   </span>
                   <span style={{ fontSize: 11.5, color: "var(--chalk-dim)" }}>
-                    {fmtIST(c.created_at)}
+                    {fmtTime(c.created_at, userTimeZone)}
                   </span>
                 </div>
                 <p

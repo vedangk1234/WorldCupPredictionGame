@@ -1,7 +1,7 @@
 import Link from "next/link";
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
-import { fmtIST } from "@/lib/format";
+import { fmtTime } from "@/lib/format";
 import type { Moment, MomentCommentView } from "@/lib/types";
 import DeleteMomentButton from "./DeleteMomentButton";
 import LikeButton from "./LikeButton";
@@ -14,7 +14,7 @@ const MOMENTS_BUCKET = "moments";
 // The shared photo/video scrapbook. Any logged-in user can view; only admins
 // can upload (/moments/new) or delete. Newest first, single-column feed.
 export default async function MomentsPage() {
-  const { supabase } = await requireUser();
+  const { supabase, timeZone } = await requireUser();
 
   // Is the viewer an admin? Decides whether upload/delete controls render.
   const {
@@ -192,7 +192,7 @@ export default async function MomentsPage() {
                   }}
                 >
                   <span style={{ color: "var(--chalk-dim)", fontSize: 12.5 }}>
-                    {fmtIST(m.created_at)}
+                    {fmtTime(m.created_at, timeZone)}
                   </span>
                   {isAdmin && <DeleteMomentButton id={m.id} />}
                 </div>
@@ -238,7 +238,11 @@ export default async function MomentsPage() {
                   />
                 </div>
 
-                <Comments momentId={m.id} comments={commentsByMoment.get(m.id) ?? []} />
+                <Comments
+                  momentId={m.id}
+                  comments={commentsByMoment.get(m.id) ?? []}
+                  userTimeZone={timeZone}
+                />
               </article>
             );
           })}
