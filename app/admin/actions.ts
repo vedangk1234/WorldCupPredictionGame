@@ -300,7 +300,7 @@ async function recomputeStreaks(supabase: ServerClient): Promise<void> {
           new Date(b.kickoff_at as string).getTime() || (a.id as number) - (b.id as number),
     );
 
-  // actual decisive winner sign per match (0 = draw → never a hit).
+  // actual outcome sign per match (0 = draw, ±1 = decisive winner).
   const actualSign = new Map<number, number>();
   for (const m of ordered) {
     actualSign.set(m.id as number, sign((m.score_a as number) - (m.score_b as number)));
@@ -342,7 +342,11 @@ async function recomputeStreaks(supabase: ServerClient): Promise<void> {
       if (!byMatch.has(mid)) continue; // never locked → skip, no break
       const predSign = byMatch.get(mid)!;
       const actSign = actualSign.get(mid)!;
-      const hit = actSign !== 0 && predSign === actSign; // correct decisive winner
+      // Hit = correct OUTCOME: a correctly-predicted draw counts, as does the
+      // correct winning side in a decisive match. A wrong outcome (predicted draw
+      // but actual decisive, predicted winner but actual draw, or wrong winner)
+      // breaks the run.
+      const hit = predSign === actSign;
       if (hit) {
         running++;
         if (running === 3) {
@@ -350,7 +354,7 @@ async function recomputeStreaks(supabase: ServerClient): Promise<void> {
           running = 0;
         }
       } else {
-        running = 0; // wrong winner or draw breaks the run
+        running = 0; // wrong outcome breaks the run
       }
     }
     upsertRows.push({

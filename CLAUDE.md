@@ -155,17 +155,20 @@ matches are always "Team A vs Team B", shown by name only.
 
 ### 2.9 Round-3 "3 consecutive winners" streak bonus
 
-- A repeatable **+5** for predicting **3 correct match winners in a row** among
+- A repeatable **+5** for predicting **3 correct match outcomes in a row** among
   the **round-3** matches (round-3 = the 3rd match by `kickoff_at` for **both**
   teams; the same `lib/round3.ts → computeRound3MatchIds()` source of truth).
 - Matches are walked in **kickoff order** (`kickoff_at` ascending — the real
   schedule order), over only the **finished** round-3 matches.
 - For a user, per match: if they have a **locked** prediction it is a **hit** when
-  they predicted the **correct decisive winner** (actual is not a draw AND
-  `sign(predA−predB) === sign(actualA−actualB)`). A wrong winner OR any draw
-  (predicted or actual) **breaks** the run (running count resets to 0). A match
-  the user **never locked** is **skipped** — it neither breaks nor counts, the
-  streak carries across it.
+  they predicted the **correct OUTCOME** — i.e. `sign(predA−predB) ===
+  sign(actualA−actualB)`. So a **decisive** match is a hit when they backed the
+  correct winning side, and a **drawn** match (`actualA === actualB`) is a hit when
+  they **also predicted a draw** (`predA === predB`). A **wrong outcome** —
+  predicted a draw but the match was decisive, predicted a winner but the match
+  drew, or backed the wrong winner — **breaks** the run (running count resets to 0).
+  A match the user **never locked** is **skipped** — it neither breaks nor counts,
+  the streak carries across it.
 - Each time the running count reaches **3**, **completions += 1** and the running
   count resets to 0 — so 6 straight hits = 2 completions. `bonus_pts =
   completions * 5`.
@@ -689,3 +692,16 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   total — the +5s already live in **Total** via the view (caption unchanged). A module-level
   `sign()` helper was added to the admin actions for the winner comparison (scoring.ts's own `sign`
   is unchanged). `npm run build` clean and all 21 scoring tests pass.
+- **Streak hit now = correct OUTCOME (correct winner OR a correctly-predicted draw); only a wrong
+  outcome breaks the streak; unlocked matches still skipped.** Streak-logic-only change to
+  `recomputeStreaks()` in `app/admin/actions.ts` — **no scoring-engine, superstar, schema, or other
+  changes**. The per-match hit test changed from "correct decisive winner only" (`actSign !== 0 &&
+  predSign === actSign`) to "correct outcome" (`predSign === actSign`): a decisive match is a hit
+  when the user backed the correct winning side, AND a drawn match is now a hit when the user also
+  predicted a draw (both signs 0). A wrong outcome — predicted a draw but the match was decisive,
+  predicted a winner but the match drew, or backed the wrong winner — still **breaks** the run; a
+  match the user never locked is still **skipped** (carries across). Everything else identical:
+  round-3 finished matches only, kickoff order, every 3rd consecutive hit → +1 completion and reset
+  (6 straight = 2), `bonus_pts = completions*5`, idempotent delete-then-insert into `streak_bonus`,
+  called at the end of `saveAndCompute`. §2.9 rule note updated to match. `npm run build` clean and
+  all 21 scoring tests pass (streak logic lives in the admin layer, unaffected).
