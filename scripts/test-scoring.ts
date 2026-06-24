@@ -15,34 +15,49 @@ interface Case {
   goals: Goal[];
   picks: number[];
   underdog: number | null;
+  isRound3?: boolean; // default false
+  superstars?: number[]; // default []
   expect: {
     winnerPts: number;
     gdPts: number;
     exactPts: number;
     scorerPts: number;
     underdogPts: number;
+    superstarPts: number;
     totalPts: number;
     correctScorers: number;
   };
 }
 
 const cases: Case[] = [
-  { num: 1, pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, totalPts: 9, correctScorers: 0 } },
-  { num: 2, pred: [3, 2], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 4, correctScorers: 0 } },
-  { num: 3, pred: [3, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 3, correctScorers: 0 } },
-  { num: 4, pred: [1, 2], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 0, correctScorers: 0 } },
-  { num: 5, pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, totalPts: 6, correctScorers: 0 } },
-  { num: 6, pred: [1, 1], actual: [2, 2], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 1, correctScorers: 0 } },
-  { num: 7, pred: [2, 1], actual: [1, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 0, correctScorers: 0 } },
-  { num: 8, pred: [2, 1], actual: [2, 1], goals: [n(101), n(101), n(201)], picks: [101], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, totalPts: 13, correctScorers: 1 } },
-  { num: 9, pred: [9, 0], actual: [1, 1], goals: [n(301), n(401)], picks: [301], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, underdogPts: 0, totalPts: 2, correctScorers: 1 } },
-  { num: 10, pred: [0, 0], actual: [1, 0], goals: [og(401)], picks: [401], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: -1, underdogPts: 0, totalPts: -1, correctScorers: 0 } },
-  { num: 11, pred: [9, 0], actual: [1, 1], goals: [n(501), og(501)], picks: [501], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 1, underdogPts: 0, totalPts: 1, correctScorers: 1 } },
-  { num: 12, pred: [1, 2], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 5, totalPts: 14, correctScorers: 0 } },
-  { num: 13, pred: [1, 2], actual: [1, 1], goals: [], picks: [], underdog: 2, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 0, correctScorers: 0 } },
-  { num: 14, pred: [2, 1], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, totalPts: 0, correctScorers: 0 } },
-  { num: 15, pred: [1, 2], actual: [1, 2], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, totalPts: 9, correctScorers: 0 } },
-  { num: 16, pred: [0, 1], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 5, totalPts: 9, correctScorers: 0 } },
+  { num: 1, pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
+  { num: 2, pred: [3, 2], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 0 } },
+  { num: 3, pred: [3, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+  { num: 4, pred: [1, 2], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+  { num: 5, pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 6, correctScorers: 0 } },
+  { num: 6, pred: [1, 1], actual: [2, 2], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 1, correctScorers: 0 } },
+  { num: 7, pred: [2, 1], actual: [1, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+  { num: 8, pred: [2, 1], actual: [2, 1], goals: [n(101), n(101), n(201)], picks: [101], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, superstarPts: 0, totalPts: 13, correctScorers: 1 } },
+  { num: 9, pred: [9, 0], actual: [1, 1], goals: [n(301), n(401)], picks: [301], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, underdogPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 1 } },
+  { num: 10, pred: [0, 0], actual: [1, 0], goals: [og(401)], picks: [401], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: -1, underdogPts: 0, superstarPts: 0, totalPts: -1, correctScorers: 0 } },
+  { num: 11, pred: [9, 0], actual: [1, 1], goals: [n(501), og(501)], picks: [501], underdog: null, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 1, underdogPts: 0, superstarPts: 0, totalPts: 1, correctScorers: 1 } },
+  { num: 12, pred: [1, 2], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 5, superstarPts: 0, totalPts: 14, correctScorers: 0 } },
+  { num: 13, pred: [1, 2], actual: [1, 1], goals: [], picks: [], underdog: 2, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+  { num: 14, pred: [2, 1], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+  { num: 15, pred: [1, 2], actual: [1, 2], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
+  { num: 16, pred: [0, 1], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 5, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
+
+  // --- Superstar bonus (round-3 only). Player 35 = a flagged superstar. ---
+  // Round-3, picked superstar scores a brace: 3 + 5 + 1 + (2*2) + 3 = 16.
+  { num: 17, pred: [2, 1], actual: [2, 1], goals: [n(35), n(35), n(201)], picks: [35], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, superstarPts: 3, totalPts: 16, correctScorers: 1 } },
+  // Round-3, picked superstar no goal + a normal scorer who scored: 3 + 5 + 1 + 2 − 3 = 8.
+  { num: 18, pred: [2, 1], actual: [2, 1], goals: [n(201), n(902), n(903)], picks: [35, 201], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 2, underdogPts: 0, superstarPts: -3, totalPts: 8, correctScorers: 1 } },
+  // Round-3, picked superstar scores ONLY an own goal → −3 superstar netted with −1 normal OG.
+  { num: 19, pred: [0, 0], actual: [1, 0], goals: [og(35)], picks: [35], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: -1, underdogPts: 0, superstarPts: -3, totalPts: -4, correctScorers: 0 } },
+  // Round-3, superstar exists & scores but was NOT picked → no superstar delta.
+  { num: 20, pred: [2, 1], actual: [2, 1], goals: [n(35), n(201), n(900)], picks: [201], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 2, underdogPts: 0, superstarPts: 0, totalPts: 11, correctScorers: 1 } },
+  // NOT round-3: picked superstar scores a brace → superstar bonus must NOT leak.
+  { num: 21, pred: [2, 1], actual: [2, 1], goals: [n(35), n(35), n(900)], picks: [35], underdog: null, isRound3: false, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, superstarPts: 0, totalPts: 13, correctScorers: 1 } },
 ];
 
 let failures = 0;
@@ -58,6 +73,8 @@ for (const c of cases) {
     teamAId: 1,
     teamBId: 2,
     underdogTeamId: c.underdog,
+    isRound3: c.isRound3 ?? false,
+    superstarPlayerIds: c.superstars ?? [],
   };
 
   const got = scorePrediction(input);
@@ -68,6 +85,7 @@ for (const c of cases) {
     'exactPts',
     'scorerPts',
     'underdogPts',
+    'superstarPts',
     'totalPts',
     'correctScorers',
   ];

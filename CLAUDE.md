@@ -134,6 +134,50 @@ matches are always "Team A vs Team B", shown by name only.
   match total; overall: a `twox_used` count column 0–3 from the `leaderboard` view)
   and in the reveal (a "⚡2x" marker beside players who doubled that match).
 
+### 2.8 Superstar scorer bonus (round-3 only)
+
+- A small set of players are flagged `players.is_superstar` (currently 6: Messi,
+  Vinícius Júnior, Ronaldo, Harry Kane, Lamine Yamal, Mbappé).
+- The bonus applies **only on round-3 matches** — a match is "round 3" iff it is
+  the 3rd match by `kickoff_at` for **both** its teams (`lib/round3.ts →
+  computeRound3MatchIds()`, the same single source of truth the UI uses). It never
+  applies to round-1/2 or knockout matches.
+- For each **distinct** player a user **picked as a scorer** who is a superstar, in
+  a round-3 match: **+3** if that player scored **≥1 real (non-own) goal**, **−3**
+  if they scored **0 real goals** (an own goal alone still counts as not scoring).
+  Flat ±3 regardless of how many goals — not per goal.
+- This is **in addition to** normal scorer points (+2 per real goal, −1 per own
+  goal) and is **netted** with them. Not picking a superstar earns no ±.
+- It folds into **`total_pts` only** (computed inside the pure engine as part of the
+  raw total, then any `used_2x` doubling applies on top). It does **not** add any
+  leaderboard column and does **not** affect the tally counts
+  (winner/gd/exact/scorers/underdog) — those stay honest. Negatives are unclamped.
+
+### 2.9 Round-3 "3 consecutive winners" streak bonus
+
+- A repeatable **+5** for predicting **3 correct match winners in a row** among
+  the **round-3** matches (round-3 = the 3rd match by `kickoff_at` for **both**
+  teams; the same `lib/round3.ts → computeRound3MatchIds()` source of truth).
+- Matches are walked in **kickoff order** (`kickoff_at` ascending — the real
+  schedule order), over only the **finished** round-3 matches.
+- For a user, per match: if they have a **locked** prediction it is a **hit** when
+  they predicted the **correct decisive winner** (actual is not a draw AND
+  `sign(predA−predB) === sign(actualA−actualB)`). A wrong winner OR any draw
+  (predicted or actual) **breaks** the run (running count resets to 0). A match
+  the user **never locked** is **skipped** — it neither breaks nor counts, the
+  streak carries across it.
+- Each time the running count reaches **3**, **completions += 1** and the running
+  count resets to 0 — so 6 straight hits = 2 completions. `bonus_pts =
+  completions * 5`.
+- Computed entirely in the **admin/recompute layer** (`recomputeStreaks()` in
+  `app/admin/actions.ts`, run at the end of `saveAndCompute`), **not** in the pure
+  scoring engine. Stored in `public.streak_bonus` (`user_id`, `completions`,
+  `bonus_pts`); the `leaderboard` view exposes `streak_completions` and folds
+  `bonus_pts` into `total_pts`. The overall leaderboard shows a **"3 Consecutive"**
+  tally column (= completion count, default 0); like the other count columns it is
+  a bragging tally and does not itself sum into the total — the +5s already live in
+  Total via the view.
+
 ---
 
 ## 3. Auth
@@ -581,3 +625,67 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   unchanged — always IST regardless of the admin's own zone.** `MatchLeaderboard.tsx` and
   `app/leaderboard/page.tsx` show no times, so no change there. `npm run build` clean and all 16 scoring
   tests pass. (Prereq: `profiles.timezone text default 'Asia/Kolkata'` already added in Supabase.)
+- **Superstars marked with ⭐ in the scorer dropdown; short superstar-rule note shown on round-3
+  matches that feature a superstar team. Display only.** **No scoring-engine, superstar-bonus math,
+  schema, or saved-data changes** — the +3/−3 superstar bonus is applied server-side in the
+  scoring/recompute layer; this work only makes it VISIBLE while predicting. Prereq (already in
+  Supabase): `players.is_superstar` (6 flagged — Messi, Vinícius Júnior, Ronaldo, Harry Kane, Lamine
+  Yamal, Mbappé). New `lib/round3.ts → computeRound3MatchIds(matches)` mirrors `lib/round2.ts` but by
+  the **3rd** match per team by `kickoff_at` (round-3 iff it's the 3rd match for BOTH teams). The
+  predictions page (`app/predictions/page.tsx`) now selects `is_superstar` with each player, computes
+  `round3Ids`, and threads an `isRound3` boolean (plus the per-player `is_superstar` flag, already on
+  `squadA`/`squadB`) into `MatchCard`. `lib/scorer-options.ts`: `HelperPlayer` gains optional
+  `is_superstar`; `toOption` prefixes the label with "⭐ " when set (e.g. "⭐ #10 Lionel Messi") —
+  position grouping and the stored `player_id` unchanged. The admin `ResultForm` doesn't pass
+  `is_superstar`, so no star shows there (left as-is). `MatchCard.tsx`: `CardPlayer`/`Props` gain
+  `is_superstar?`/`isRound3`; a subtle gold note (styled like the underdog tag) renders in the
+  **Open/editable** section, only when `isRound3` AND at least one squad has a superstar — "⭐ Superstar
+  match: pick a starred player to score and you get +3 if they score (on top of normal points) — but
+  −3 if they don't. Choose wisely." Round-1/2 and round-3-without-a-superstar-team show nothing. As a
+  small touch, the ⭐ also stays beside a backed superstar in the read-only "your scorers" list
+  (`ScorerLine` + a `superstarIds` set). `npm run build` clean and all 16 scoring tests pass.
+- **Superstar scorer bonus — SCORING ENGINE math (see §2.8):** Implemented the actual +3/−3
+  superstar bonus that the ⭐ UI note already advertised. **Round-3 matches only**, reusing the
+  existing `lib/round3.ts → computeRound3MatchIds()` (3rd match by `kickoff_at` for BOTH teams) — no
+  new round helper. `lib/scoring.ts`: `ScoringInput` gains `isRound3: boolean` and
+  `superstarPlayerIds: number[]`; inside `scorePrediction`, after the scorer loop, IF `isRound3` then
+  for each **distinct picked** player that is in `superstarPlayerIds`, add **+3** if that player's
+  **real (non-own) goal count ≥ 1** else **−3** (an own goal alone = not scoring), summed into a new
+  `superstarPts` and folded into `totalPts`. Flat ±3 per superstar regardless of goal count;
+  unclamped. `winnerPts`/`gdPts`/`exactPts`/`scorerPts`, the tally booleans, and `correctScorers` are
+  **unchanged** — the bonus only moves `total_pts`. `superstarPts` is exposed on `ScoringResult` for
+  the tests but is **never surfaced in any UI or leaderboard column**. **Recompute**
+  (`app/admin/actions.ts → recomputeMatch`): loads ALL matches → `computeRound3MatchIds` →
+  `isRound3 = round3Ids.has(matchId)`, and `select id from players where is_superstar = true` →
+  `superstarPlayerIds`; both are passed into every `scorePrediction` call. The superstar bonus is part
+  of the engine's raw total, and the existing **`used_2x` doubling applies on top** (so a doubled
+  round-3 superstar match doubles the superstar delta too). Idempotent (re-reads round-3 set,
+  superstars, and `used_2x` each run). **Tests** (`scripts/test-scoring.ts`): added `isRound3`
+  (default false) + `superstars` (default []) to the case shape and threaded into the input; all 16
+  existing cases keep their defaults and still pass. Added **5 new cases** (now 21 total, all pass):
+  round-3 picked superstar brace → 3+5+1+4+3 = 16; round-3 picked superstar no-goal + a normal scorer
+  → 3+5+1+2−3 = 8; round-3 picked superstar with only an own goal → −1 scorer netted with −3
+  superstar (= −4); round-3 superstar NOT picked → no delta; `isRound3 = false` with a picked
+  scoring superstar → no bonus leaks. `npm run build` clean and all **21** scoring tests pass.
+- **Round-3 "3 consecutive winners" streak bonus (see §2.9):** A repeatable **+5** for getting
+  **3 correct match WINNERS in a row** among the **round-3** matches (round-3 = 3rd by `kickoff_at`
+  for BOTH teams, via the existing `lib/round3.ts → computeRound3MatchIds()` — no new helper).
+  **Scoring engine `lib/scoring.ts` is UNTOUCHED** — streaks are computed in the admin/recompute
+  layer, not in `scorePrediction`. **Prereq (already in Supabase):** `public.streak_bonus`
+  (`user_id` pk, `completions` int, `bonus_pts` int, `updated_at`) with RLS (all authenticated
+  read; admin write) and the `leaderboard` view now exposing `streak_completions` and adding
+  `bonus_pts` into `total_pts`. New helper `recomputeStreaks(supabase)` in `app/admin/actions.ts`:
+  loads all matches → round-3 set, takes the **FINISHED** round-3 matches in **kickoff order**
+  (`kickoff_at` asc, id tiebreak — matches round3.ts), loads all **locked** predictions for them,
+  and for EVERY user walks the matches keeping a running count — a **hit** is a correct decisive
+  winner (`actual !== draw && sign(predA−predB) === sign(actualA−actualB)`); a wrong winner or any
+  draw resets it to 0; a match the user never locked is **skipped** (carries across). Every 3rd
+  consecutive hit = +1 completion and resets the count (6 straight = 2). Writes `streak_bonus`
+  idempotently (delete-all then insert rows with `completions > 0`, `bonus_pts = completions*5`).
+  It is called at the **END of `saveAndCompute`** (after `recomputeMatch`), so finishing or
+  correcting any match refreshes everyone's streaks. `lib/types.ts`: `LeaderboardRow` gains
+  `streak_completions`. **UI** (`app/leaderboard/page.tsx`): a **"3 Consecutive"** tally column
+  (= completion count, default 0) beside the other counts; like them it doesn't itself sum into the
+  total — the +5s already live in **Total** via the view (caption unchanged). A module-level
+  `sign()` helper was added to the admin actions for the winner comparison (scoring.ts's own `sign`
+  is unchanged). `npm run build` clean and all 21 scoring tests pass.

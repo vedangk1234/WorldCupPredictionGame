@@ -15,6 +15,10 @@ interface HelperPlayer {
   name: string;
   position: string | null;
   shirt_number: number | null;
+  // DISPLAY-ONLY: when true the option label is prefixed with ⭐. Selection still
+  // stores the same player_id. The admin dropdown doesn't pass this, so no star
+  // shows there — only the user prediction card supplies it.
+  is_superstar?: boolean | null;
 }
 
 interface HelperTeam {
@@ -51,7 +55,8 @@ function byShirt(a: HelperPlayer, b: HelperPlayer): number {
 }
 
 function toOption(p: HelperPlayer): { id: number; label: string } {
-  return { id: p.id, label: `#${p.shirt_number ?? "–"} ${p.name}` };
+  const star = p.is_superstar ? "⭐ " : "";
+  return { id: p.id, label: `${star}#${p.shirt_number ?? "–"} ${p.name}` };
 }
 
 export function buildScorerGroups(teams: HelperTeam[]): ScorerOptionGroup[] {

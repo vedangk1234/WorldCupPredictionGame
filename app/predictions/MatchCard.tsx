@@ -14,6 +14,9 @@ export interface CardPlayer {
   position: string | null;
   shirt_number: number | null;
   team_id: number;
+  // DISPLAY-ONLY superstar flag — drives the ⭐ marker in the scorer dropdown and
+  // the round-3 superstar note. The +3/−3 bonus math is unchanged (server-side).
+  is_superstar?: boolean | null;
 }
 
 export interface CardPrediction {
@@ -92,6 +95,9 @@ interface Props {
   // a match is 2x-eligible when isRound2 AND there is no underdog. tokensUsed is
   // how many of the user's 3 doublers are already spent (across all matches).
   isRound2: boolean;
+  // True when this is a round-3 match (by kickoff order). Drives the ⭐ superstar
+  // note, shown only when a superstar team is also playing. Display only.
+  isRound3: boolean;
   tokensUsed: number;
   reveal: RevealRow[];
   matchPoints: MatchPointsRow[];
@@ -153,6 +159,7 @@ export default function MatchCard(props: Props) {
     state,
     isNextOpen,
     isRound2,
+    isRound3,
     tokensUsed,
     reveal,
     matchPoints,
@@ -167,6 +174,13 @@ export default function MatchCard(props: Props) {
   // round-1/3 show no 2x UI at all.
   const twoxEligible = isRound2 && !underdog;
   const TOKENS_MAX = 3;
+
+  // Superstar note: shown only on a round-3 match where at least one of the two
+  // squads contains a flagged superstar. Display only — the +3/−3 bonus math is
+  // applied server-side and is unchanged.
+  const hasSuperstar =
+    squadA.some((p) => p.is_superstar) || squadB.some((p) => p.is_superstar);
+  const showSuperstarNote = isRound3 && hasSuperstar;
 
   const [scoreA, setScoreA] = useState(
     myPrediction ? String(myPrediction.scoreA) : "",
@@ -202,6 +216,14 @@ export default function MatchCard(props: Props) {
     const map = new Map<number, string>();
     for (const p of [...squadA, ...squadB]) map.set(p.id, p.name);
     return map;
+  }, [squadA, squadB]);
+
+  // Superstar player ids — used to keep the ⭐ beside a backed superstar in the
+  // read-only "your scorers" list (display only).
+  const superstarIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const p of [...squadA, ...squadB]) if (p.is_superstar) set.add(p.id);
+    return set;
   }, [squadA, squadB]);
 
   const numA = scoreA === "" ? 0 : Number(scoreA);
@@ -392,7 +414,7 @@ export default function MatchCard(props: Props) {
                   <div className="display" style={{ fontSize: 18, fontWeight: 800 }}>
                     {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
                   </div>
-                  <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} />
+                  <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} superstarIds={superstarIds} />
                   <TwoXIndicator
                     used2x={myPrediction.used2x}
                     show={myPrediction.used2x || twoxEligible}
@@ -612,6 +634,26 @@ export default function MatchCard(props: Props) {
             )}
           </div>
 
+          {/* Superstar note — round-3 matches featuring a superstar team only. */}
+          {showSuperstarNote && (
+            <div
+              style={{
+                marginTop: 18,
+                fontSize: 12.5,
+                color: "var(--gold-300)",
+                background: "rgba(243,201,105,0.1)",
+                border: "1px solid rgba(243,201,105,0.4)",
+                borderRadius: 8,
+                padding: "9px 12px",
+                lineHeight: 1.5,
+              }}
+            >
+              ⭐ <strong>Superstar match:</strong> pick a starred player to score and you get{" "}
+              <strong>+3</strong> if they score (on top of normal points) — but{" "}
+              <strong>−3</strong> if they don&apos;t. Choose wisely.
+            </div>
+          )}
+
           {/* 2x doubler — only on round-2 matches. Eligible (no underdog) shows
               the Yes/No toggle; round-2 WITH an underdog shows the note. */}
           {isRound2 &&
@@ -773,7 +815,7 @@ export default function MatchCard(props: Props) {
               <div className="display" style={{ fontSize: 18, fontWeight: 800 }}>
                 {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
               </div>
-              <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} />
+              <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} superstarIds={superstarIds} />
               <TwoXIndicator
                 used2x={myPrediction.used2x}
                 show={myPrediction.used2x || twoxEligible}
@@ -893,9 +935,11 @@ function ScorersSummary({
 function ScorerLine({
   ids,
   playerName,
+  superstarIds,
 }: {
   ids: number[];
   playerName: Map<number, string>;
+  superstarIds?: Set<number>;
 }) {
   if (ids.length === 0) {
     return (
@@ -906,7 +950,13 @@ function ScorerLine({
   }
   return (
     <div style={{ fontSize: 12.5, color: "var(--chalk-dim)", marginTop: 4 }}>
-      Scorers: {ids.map((id) => playerName.get(id) ?? `#${id}`).join(", ")}
+      Scorers:{" "}
+      {ids
+        .map(
+          (id) =>
+            `${superstarIds?.has(id) ? "⭐ " : ""}${playerName.get(id) ?? `#${id}`}`,
+        )
+        .join(", ")}
     </div>
   );
 }

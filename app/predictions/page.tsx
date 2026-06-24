@@ -1,6 +1,7 @@
 import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
 import { computeRound2MatchIds } from "@/lib/round2";
+import { computeRound3MatchIds } from "@/lib/round3";
 import MatchCard from "./MatchCard";
 import type {
   MatchState,
@@ -102,6 +103,18 @@ export default async function PredictionsPage() {
     })),
   );
 
+  // Round-3 match ids (by kickoff order) for the "superstar" feature. Used only
+  // to decide whether to show the ⭐ superstar-rule note (display only — the
+  // +3/−3 bonus math lives in the scoring/recompute layer).
+  const round3Ids = computeRound3MatchIds(
+    matches.map((m) => ({
+      id: m.id,
+      team_a_id: (m.team_a?.id ?? -1) as number,
+      team_b_id: (m.team_b?.id ?? -2) as number,
+      kickoff_at: m.kickoff_at,
+    })),
+  );
+
   // The current user's own predictions (+ backed scorers) across all matches.
   const { data: myPredsData } = await supabase
     .from("predictions")
@@ -127,7 +140,7 @@ export default async function PredictionsPage() {
   for (let from = 0; ; from += PLAYER_PAGE) {
     const { data: chunk, error: playersErr } = await supabase
       .from("players")
-      .select("id, name, position, shirt_number, team_id")
+      .select("id, name, position, shirt_number, team_id, is_superstar")
       .order("id", { ascending: true })
       .range(from, from + PLAYER_PAGE - 1);
     if (playersErr) break;
@@ -359,6 +372,7 @@ export default async function PredictionsPage() {
               : null;
 
             const isRound2 = round2Ids.has(m.id);
+            const isRound3 = round3Ids.has(m.id);
 
             // Build the reveal list (only populated for revealed matches).
             const reveal: RevealRow[] =
@@ -398,6 +412,7 @@ export default async function PredictionsPage() {
                 state={state}
                 isNextOpen={m.id === nextOpenId}
                 isRound2={isRound2}
+                isRound3={isRound3}
                 tokensUsed={myTokensUsed}
                 reveal={reveal}
                 matchPoints={pointsByMatch.get(m.id) ?? []}

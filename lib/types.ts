@@ -144,4 +144,7 @@ export interface LeaderboardRow {
   underdog_count: number;
   // Count of this user's locked predictions with used_2x=true (0–3).
   twox_used: number;
+  // Number of completed round-3 "3 consecutive correct winner" streaks (0,1,2…).
+  // Each completion folds +5 into total_pts via the streak_bonus table + view.
+  streak_completions: number;
 }

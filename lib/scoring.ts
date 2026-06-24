@@ -19,6 +19,8 @@ export interface ScoringInput {
   teamAId: number;
   teamBId: number;
   underdogTeamId: number | null; // designated underdog, or null
+  isRound3: boolean; // true only for round-3 matches (3rd by kickoff for BOTH teams)
+  superstarPlayerIds: number[]; // ids of players flagged is_superstar
 }
 
 export interface ScoringResult {
@@ -27,6 +29,7 @@ export interface ScoringResult {
   exactPts: number;
   scorerPts: number;
   underdogPts: number;
+  superstarPts: number; // round-3 only: +3 per picked superstar who scored, −3 if not (test/debug; not surfaced in UI)
   totalPts: number;
   gotWinner: boolean;
   gotGd: boolean;
@@ -60,8 +63,10 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   // Scorers: dedupe picks, then for each picked player net +2 per real goal
   // against -1 per own goal. scorerPts may be negative; do NOT clamp.
   const pickedIds = [...new Set(input.predictedScorerIds)];
+  const superstarSet = new Set(input.superstarPlayerIds);
   let scorerPts = 0;
   let correctScorers = 0;
+  let superstarPts = 0;
   for (const playerId of pickedIds) {
     let normalGoals = 0;
     let ownGoals = 0;
@@ -72,6 +77,14 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
     }
     scorerPts += normalGoals * 2 - ownGoals * 1;
     if (normalGoals >= 1) correctScorers++;
+
+    // Superstar bonus: round-3 matches only. For each distinct picked player who
+    // is a flagged superstar, +3 if they scored at least one REAL goal, else −3
+    // (an own goal alone counts as not scoring). Additive on top of scorerPts;
+    // does NOT affect correctScorers or any tally. Unclamped.
+    if (input.isRound3 && superstarSet.has(playerId)) {
+      superstarPts += normalGoals >= 1 ? 3 : -3;
+    }
   }
 
   // Underdog: +5 only if a designated underdog actually won AND the user
@@ -93,7 +106,8 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
     if (underdogWonActual && underdogPredicted) underdogPts = 5;
   }
 
-  const totalPts = winnerPts + gdPts + exactPts + scorerPts + underdogPts;
+  const totalPts =
+    winnerPts + gdPts + exactPts + scorerPts + underdogPts + superstarPts;
 
   return {
     winnerPts,
@@ -101,6 +115,7 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
     exactPts,
     scorerPts,
     underdogPts,
+    superstarPts,
     totalPts,
     gotWinner: winnerPts > 0,
     gotGd: gdPts > 0,

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { scorePrediction } from "@/lib/scoring";
+import { computeRound3MatchIds } from "@/lib/round3";
 import type { GoalEntry } from "@/lib/types";
 
 type ServerClient = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
@@ -129,6 +130,18 @@ export async function saveAndCompute(
     };
   }
 
+  // Refresh everyone's round-3 "3 consecutive correct winners" streak bonuses —
+  // finishing or correcting any match can change a streak. Idempotent.
+  try {
+    await recomputeStreaks(supabase);
+  } catch (e) {
+    revalidateAdmin(matchId);
+    return {
+      ok: false,
+      message: `Result + points saved, but streak bonuses failed to compute: ${(e as Error).message}`,
+    };
+  }
+
   revalidateAdmin(matchId);
   return { ok: true, message: "Result saved, match finished, and points computed." };
 }
@@ -150,6 +163,25 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
   if (match.score_a === null || match.score_b === null) {
     throw new Error("Save a result (score) before computing points.");
   }
+
+  // Round-3 eligibility (3rd match by kickoff for BOTH teams) is derived from
+  // ALL matches — same single source of truth used by the predictions UI. The
+  // +3/−3 superstar bonus applies ONLY when this match is round-3.
+  const { data: allMatches, error: allErr } = await supabase
+    .from("matches")
+    .select("id, team_a_id, team_b_id, kickoff_at");
+  if (allErr) throw new Error(allErr.message);
+  const round3Ids = computeRound3MatchIds(allMatches ?? []);
+  const isRound3 = round3Ids.has(matchId);
+
+  // Flagged superstar player ids (Messi, Vinícius Júnior, Ronaldo, Kane, Yamal,
+  // Mbappé). Only relevant in round-3 matches.
+  const { data: superstars, error: ssErr } = await supabase
+    .from("players")
+    .select("id")
+    .eq("is_superstar", true);
+  if (ssErr) throw new Error(ssErr.message);
+  const superstarPlayerIds = (superstars ?? []).map((s) => s.id as number);
 
   // Each match_goals row is one goal — map directly for the engine.
   const { data: goals } = await supabase
@@ -193,6 +225,8 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
       teamAId: match.team_a_id as number,
       teamBId: match.team_b_id as number,
       underdogTeamId: (match.underdog_team_id as number | null) ?? null,
+      isRound3,
+      superstarPlayerIds,
     });
     // 2x doubling is applied HERE, in the recompute layer — never inside the
     // pure scoring engine. Only the points TOTAL doubles (negatives too: −1 →
@@ -221,6 +255,123 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
 
   if (rows.length > 0) {
     const { error: insErr } = await supabase.from("prediction_points").insert(rows);
+    if (insErr) throw new Error(insErr.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recompute the round-3 "3 consecutive correct winner predictions" streak bonus
+// for EVERY user, idempotently (see CLAUDE.md §2.9). Walks the FINISHED round-3
+// matches in KICKOFF order; for each user, a match is a "hit" when they have a
+// LOCKED prediction whose predicted decisive winner matches the actual decisive
+// winner. A wrong winner OR any draw (predicted or actual) BREAKS the run (reset
+// to 0). A match the user never locked is SKIPPED (carries across, no break).
+// Every 3rd consecutive hit = 1 completion (+5) and resets the running count, so
+// 6 straight = 2 completions. Only FINISHED matches count.
+//
+// The result lands in public.streak_bonus (user_id, completions, bonus_pts =
+// completions*5); the leaderboard view exposes streak_completions and folds
+// bonus_pts into total_pts. The pure scoring engine is NOT touched.
+// Not exported as an action (helper only).
+// ---------------------------------------------------------------------------
+const sign = (n: number): number => (n > 0 ? 1 : n < 0 ? -1 : 0);
+
+async function recomputeStreaks(supabase: ServerClient): Promise<void> {
+  // All matches → round-3 set (3rd by kickoff for BOTH teams) + per-match result.
+  const { data: allMatches, error: allErr } = await supabase
+    .from("matches")
+    .select("id, team_a_id, team_b_id, kickoff_at, finished, score_a, score_b");
+  if (allErr) throw new Error(allErr.message);
+  const matches = allMatches ?? [];
+  const round3Ids = computeRound3MatchIds(matches);
+
+  // FINISHED round-3 matches, in kickoff order (id breaks ties — matches round3.ts).
+  const ordered = matches
+    .filter(
+      (m) =>
+        round3Ids.has(m.id as number) &&
+        m.finished === true &&
+        m.score_a !== null &&
+        m.score_b !== null,
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.kickoff_at as string).getTime() -
+          new Date(b.kickoff_at as string).getTime() || (a.id as number) - (b.id as number),
+    );
+
+  // actual decisive winner sign per match (0 = draw → never a hit).
+  const actualSign = new Map<number, number>();
+  for (const m of ordered) {
+    actualSign.set(m.id as number, sign((m.score_a as number) - (m.score_b as number)));
+  }
+
+  // Locked predictions for those matches: user → match → predicted winner sign.
+  const orderedIds = ordered.map((m) => m.id as number);
+  const predByUser = new Map<string, Map<number, number>>();
+  if (orderedIds.length > 0) {
+    const { data: preds, error: predErr } = await supabase
+      .from("predictions")
+      .select("user_id, match_id, score_a, score_b")
+      .eq("locked", true)
+      .in("match_id", orderedIds);
+    if (predErr) throw new Error(predErr.message);
+    for (const p of preds ?? []) {
+      const uid = p.user_id as string;
+      const inner = predByUser.get(uid) ?? new Map<number, number>();
+      inner.set(
+        p.match_id as number,
+        sign((p.score_a as number) - (p.score_b as number)),
+      );
+      predByUser.set(uid, inner);
+    }
+  }
+
+  // For each user, walk the finished round-3 matches in kickoff order.
+  const upsertRows: {
+    user_id: string;
+    completions: number;
+    bonus_pts: number;
+    updated_at: string;
+  }[] = [];
+  const now = new Date().toISOString();
+  for (const [uid, byMatch] of predByUser) {
+    let running = 0;
+    let completions = 0;
+    for (const mid of orderedIds) {
+      if (!byMatch.has(mid)) continue; // never locked → skip, no break
+      const predSign = byMatch.get(mid)!;
+      const actSign = actualSign.get(mid)!;
+      const hit = actSign !== 0 && predSign === actSign; // correct decisive winner
+      if (hit) {
+        running++;
+        if (running === 3) {
+          completions++;
+          running = 0;
+        }
+      } else {
+        running = 0; // wrong winner or draw breaks the run
+      }
+    }
+    upsertRows.push({
+      user_id: uid,
+      completions,
+      bonus_pts: completions * 5,
+      updated_at: now,
+    });
+  }
+
+  // Clean slate, then re-insert — keeps the bonus idempotent and removes stale
+  // rows for users whose streaks dropped to 0 after a correction.
+  const { error: delErr } = await supabase
+    .from("streak_bonus")
+    .delete()
+    .neq("user_id", "00000000-0000-0000-0000-000000000000");
+  if (delErr) throw new Error(delErr.message);
+
+  const nonZero = upsertRows.filter((r) => r.completions > 0);
+  if (nonZero.length > 0) {
+    const { error: insErr } = await supabase.from("streak_bonus").insert(nonZero);
     if (insErr) throw new Error(insErr.message);
   }
 }
