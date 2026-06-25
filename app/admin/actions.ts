@@ -196,12 +196,32 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
   // Only LOCKED predictions count. (After a match is played its close time has
   // passed, so the reveal-by-close RLS clause lets the admin read them all.)
   // used_2x is read fresh each recompute so the doubling stays idempotent.
-  const { data: preds, error: predErr } = await supabase
-    .from("predictions")
-    .select("id, user_id, score_a, score_b, used_2x, prediction_scorers(player_id)")
-    .eq("match_id", matchId)
-    .eq("locked", true);
-  if (predErr) throw new Error(predErr.message);
+  // Page in 1000-row chunks (PostgREST caps responses at 1000) so EVERY locked
+  // prediction is scored, not just the first 1000 — otherwise points would be
+  // wrong past ~1000 users. Ordered by id for stable paging.
+  type PredRow = {
+    id: number;
+    user_id: string;
+    score_a: number;
+    score_b: number;
+    used_2x: boolean;
+    prediction_scorers: { player_id: number }[];
+  };
+  const preds: PredRow[] = [];
+  const RECOMPUTE_PRED_PAGE = 1000;
+  for (let from = 0; ; from += RECOMPUTE_PRED_PAGE) {
+    const { data: chunk, error: predErr } = await supabase
+      .from("predictions")
+      .select("id, user_id, score_a, score_b, used_2x, prediction_scorers(player_id)")
+      .eq("match_id", matchId)
+      .eq("locked", true)
+      .order("id", { ascending: true })
+      .range(from, from + RECOMPUTE_PRED_PAGE - 1);
+    if (predErr) throw new Error(predErr.message);
+    const rows = (chunk ?? []) as unknown as PredRow[];
+    preds.push(...rows);
+    if (rows.length < RECOMPUTE_PRED_PAGE) break;
+  }
 
   // Clean slate, then re-insert — keeps recompute idempotent.
   const { error: delErr } = await supabase
@@ -310,12 +330,31 @@ async function recomputeStreaks(supabase: ServerClient): Promise<void> {
   const orderedIds = ordered.map((m) => m.id as number);
   const predByUser = new Map<string, Map<number, number>>();
   if (orderedIds.length > 0) {
-    const { data: preds, error: predErr } = await supabase
-      .from("predictions")
-      .select("user_id, match_id, score_a, score_b")
-      .eq("locked", true)
-      .in("match_id", orderedIds);
-    if (predErr) throw new Error(predErr.message);
+    // Page in 1000-row chunks (PostgREST caps responses at 1000) so ALL locked
+    // round-3 predictions load — a truncated read would silently drop locked
+    // predictions and compute WRONG streak completions. Ordered by id for stable
+    // paging.
+    type StreakPredRow = {
+      user_id: string;
+      match_id: number;
+      score_a: number;
+      score_b: number;
+    };
+    const preds: StreakPredRow[] = [];
+    const STREAK_PRED_PAGE = 1000;
+    for (let from = 0; ; from += STREAK_PRED_PAGE) {
+      const { data: chunk, error: predErr } = await supabase
+        .from("predictions")
+        .select("user_id, match_id, score_a, score_b")
+        .eq("locked", true)
+        .in("match_id", orderedIds)
+        .order("id", { ascending: true })
+        .range(from, from + STREAK_PRED_PAGE - 1);
+      if (predErr) throw new Error(predErr.message);
+      const rows = (chunk ?? []) as StreakPredRow[];
+      preds.push(...rows);
+      if (rows.length < STREAK_PRED_PAGE) break;
+    }
     for (const p of preds ?? []) {
       const uid = p.user_id as string;
       const inner = predByUser.get(uid) ?? new Map<number, number>();

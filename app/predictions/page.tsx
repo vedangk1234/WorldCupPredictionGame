@@ -173,11 +173,24 @@ export default async function PredictionsPage() {
   let revealRows: PredRow[] = [];
   const profileById = new Map<string, { name: string; username: string }>();
   if (revealedIds.length > 0) {
-    const { data: allPredsData } = await supabase
-      .from("predictions")
-      .select("id, user_id, match_id, score_a, score_b, locked, used_2x, prediction_scorers(player_id)")
-      .in("match_id", revealedIds);
-    revealRows = (allPredsData ?? []) as unknown as PredRow[];
+    // As the tournament fills up, revealed predictions exceed PostgREST's default
+    // 1000-row cap. An unbounded select silently drops rows past 1000 (newest
+    // round-3 reveals, fetched last) — truncating reveal names/scorelines. Page
+    // through in 1000-row chunks, ordered by id for stable paging. (Same bug and
+    // fix as the players query above.)
+    const PRED_PAGE = 1000;
+    for (let from = 0; ; from += PRED_PAGE) {
+      const { data: chunk, error: predErr } = await supabase
+        .from("predictions")
+        .select("id, user_id, match_id, score_a, score_b, locked, used_2x, prediction_scorers(player_id)")
+        .in("match_id", revealedIds)
+        .order("id", { ascending: true })
+        .range(from, from + PRED_PAGE - 1);
+      if (predErr) break;
+      const rows = (chunk ?? []) as unknown as PredRow[];
+      revealRows.push(...rows);
+      if (rows.length < PRED_PAGE) break;
+    }
 
     const userIds = Array.from(new Set(revealRows.map((r) => r.user_id)));
     if (userIds.length > 0) {
@@ -213,11 +226,28 @@ export default async function PredictionsPage() {
   const finishedIds = matches.filter((m) => m.finished).map((m) => m.id);
   const pointsByMatch = new Map<number, MatchPointsRow[]>();
   if (finishedIds.length > 0) {
-    const { data: pts } = await supabase
-      .from("prediction_points")
-      .select("user_id, match_id, winner_pts, gd_pts, exact_pts, scorer_pts, underdog_pts, total_pts")
-      .in("match_id", finishedIds);
-    for (const row of (pts ?? []) as PointsRow[]) {
+    // Points rows (one per locked prediction per finished match) exceed
+    // PostgREST's default 1000-row cap as matches accumulate. An unbounded
+    // select silently dropped the rows past 1000 — newest round-3 matches
+    // (fetched last, no order) vanished, so finished round-3 matches showed
+    // "No locked predictions". Page through in 1000-row chunks, ordered by
+    // (match_id, user_id) — a stable unique key (one row per user per match).
+    const PTS_PAGE = 1000;
+    const ptsRows: PointsRow[] = [];
+    for (let from = 0; ; from += PTS_PAGE) {
+      const { data: chunk, error: ptsErr } = await supabase
+        .from("prediction_points")
+        .select("user_id, match_id, winner_pts, gd_pts, exact_pts, scorer_pts, underdog_pts, total_pts")
+        .in("match_id", finishedIds)
+        .order("match_id", { ascending: true })
+        .order("user_id", { ascending: true })
+        .range(from, from + PTS_PAGE - 1);
+      if (ptsErr) break;
+      const rows = (chunk ?? []) as PointsRow[];
+      ptsRows.push(...rows);
+      if (rows.length < PTS_PAGE) break;
+    }
+    for (const row of ptsRows) {
       const prof = profileById.get(row.user_id);
       const list = pointsByMatch.get(row.match_id) ?? [];
       list.push({
@@ -242,11 +272,24 @@ export default async function PredictionsPage() {
   // (the card groups accordingly). See CLAUDE.md §2.2 / schema match_goals.
   const goalsByMatch = new Map<number, MatchGoalRow[]>();
   if (finishedIds.length > 0) {
-    const { data: goalsData } = await supabase
-      .from("match_goals")
-      .select("match_id, minute, is_own_goal, players(name, team_id)")
-      .in("match_id", finishedIds);
-    for (const g of (goalsData ?? []) as unknown as GoalJoin[]) {
+    // Goal rows (one per goal) also grow past PostgREST's default 1000-row cap.
+    // Page through in 1000-row chunks, ordered by id for stable paging, so
+    // round-3 scorer/goal detail isn't silently truncated. (Same fix as above.)
+    const GOALS_PAGE = 1000;
+    const goalRows: GoalJoin[] = [];
+    for (let from = 0; ; from += GOALS_PAGE) {
+      const { data: chunk, error: goalsErr } = await supabase
+        .from("match_goals")
+        .select("match_id, minute, is_own_goal, players(name, team_id)")
+        .in("match_id", finishedIds)
+        .order("id", { ascending: true })
+        .range(from, from + GOALS_PAGE - 1);
+      if (goalsErr) break;
+      const rows = (chunk ?? []) as unknown as GoalJoin[];
+      goalRows.push(...rows);
+      if (rows.length < GOALS_PAGE) break;
+    }
+    for (const g of goalRows) {
       const list = goalsByMatch.get(g.match_id) ?? [];
       list.push({
         playerName: g.players?.name ?? "Unknown",

@@ -44,10 +44,21 @@ export default async function MomentsPage() {
 
   if (momentIds.length > 0) {
     // Likes: pull (moment_id, user_id) for these moments, then count + flag mine.
-    const { data: likeRows } = await supabase
-      .from("moment_likes")
-      .select("moment_id, user_id")
-      .in("moment_id", momentIds);
+    // Page in 1000-row chunks (PostgREST caps responses at 1000) so like counts
+    // stay correct regardless of volume. Ordered by id for stable paging.
+    const likeRows: { moment_id: number; user_id: string }[] = [];
+    const LIKE_PAGE = 1000;
+    for (let from = 0; ; from += LIKE_PAGE) {
+      const { data: chunk } = await supabase
+        .from("moment_likes")
+        .select("moment_id, user_id")
+        .in("moment_id", momentIds)
+        .order("id", { ascending: true })
+        .range(from, from + LIKE_PAGE - 1);
+      const rows = (chunk ?? []) as { moment_id: number; user_id: string }[];
+      likeRows.push(...rows);
+      if (rows.length < LIKE_PAGE) break;
+    }
     for (const row of likeRows ?? []) {
       const mid = row.moment_id as number;
       likeCount.set(mid, (likeCount.get(mid) ?? 0) + 1);
@@ -55,12 +66,31 @@ export default async function MomentsPage() {
     }
 
     // Comments: load all for these moments oldest-first, then resolve authors via
-    // a single profiles lookup keyed by the distinct user_ids.
-    const { data: commentRows } = await supabase
-      .from("moment_comments")
-      .select("id, moment_id, user_id, body, created_at")
-      .in("moment_id", momentIds)
-      .order("created_at", { ascending: true });
+    // a single profiles lookup keyed by the distinct user_ids. .order() alone does
+    // NOT paginate — page in 1000-row chunks (PostgREST caps responses at 1000) so
+    // full comment threads load regardless of volume. created_at is the display
+    // order; id breaks ties for stable paging.
+    type CommentRow = {
+      id: number;
+      moment_id: number;
+      user_id: string;
+      body: string;
+      created_at: string;
+    };
+    const commentRows: CommentRow[] = [];
+    const COMMENT_PAGE = 1000;
+    for (let from = 0; ; from += COMMENT_PAGE) {
+      const { data: chunk } = await supabase
+        .from("moment_comments")
+        .select("id, moment_id, user_id, body, created_at")
+        .in("moment_id", momentIds)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + COMMENT_PAGE - 1);
+      const rows = (chunk ?? []) as CommentRow[];
+      commentRows.push(...rows);
+      if (rows.length < COMMENT_PAGE) break;
+    }
 
     const authorIds = Array.from(
       new Set((commentRows ?? []).map((c) => c.user_id as string)),

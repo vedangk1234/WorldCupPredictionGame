@@ -705,3 +705,39 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   (6 straight = 2), `bonus_pts = completions*5`, idempotent delete-then-insert into `streak_bonus`,
   called at the end of `saveAndCompute`. §2.9 rule note updated to match. `npm run build` clean and
   all 21 scoring tests pass (streak logic lives in the admin layer, unaffected).
+- **Bug fix: 1000-row truncation on the remaining unbounded predictions-page reads (not just
+  players).** The same PostgREST default 1000-row response cap that was previously fixed for the
+  `players` query silently truncated **three more** unbounded `select`s in `app/predictions/page.tsx`
+  as the tournament progressed past 1000 rows. Because those queries had **no ORDER BY**, the rows
+  past 1000 (the newest round-3 data, fetched last) were the ones dropped — so **finished round-3
+  matches showed "No locked predictions"** and round-3 reveal names / scorer detail risked being
+  incomplete. **Display/data-loading only — no schema, RLS, scoring-engine, or logic changes.**
+  Applied the existing chunked-pagination pattern (`.order(<stable key>).range(from, from+999)`,
+  loop until a short page, accumulate) to each: (1) **`prediction_points`** (the visible bug) —
+  ordered by `(match_id, user_id)` (unique: one points row per user per finished match); (2) the
+  **predictions reveal** query (filtered on `revealedIds`) — ordered by `id`; (3) **`match_goals`**
+  — ordered by `id`. Each keeps its exact same select columns and `.in(...)` filter; only stable
+  ordering + 1000-row range looping was added (no new filters that could drop rows). For a finished
+  round-3 match (e.g. South Africa vs South Korea), `pointsByMatch` now contains all ~14 locked
+  predictors' rows. `npm run build` clean and all 21 scoring tests pass.
+- **Bug fix: 1000-row truncation on the remaining AT-RISK unbounded reads (admin recompute +
+  moments) — same truncation class as the prior `players`/predictions-page fixes.** An audit found
+  four more unbounded `select`s that PostgREST silently caps at 1000 rows; applied the same chunked
+  pagination pattern (stable `.order(<key>)` + `.range(from, from+999)` loop, accumulate until a
+  page returns < 1000) to each, keeping every query's exact select columns and filters (no new
+  filters that could drop rows). **No scoring-engine, streak/superstar math, schema, or RLS
+  changes** — purely making these reads fetch ALL rows. The four queries paged: (1)
+  **`recomputeStreaks` predictions** (`app/admin/actions.ts`) — the `.eq("locked",true)
+  .in("match_id", orderedIds)` read, ordered by `id`. This was a **correctness bug**: a truncated
+  read would drop locked round-3 predictions and compute WRONG streak completions. Post-fix,
+  `recomputeStreaks` loads **ALL** locked round-3 predictions regardless of count, so each user's
+  3-consecutive-outcome walk runs over the complete set and `completions`/`bonus_pts` are correct
+  even past 1000 locked round-3 rows. (2) **`recomputeMatch` predictions** (`app/admin/actions.ts`)
+  — the `.eq("match_id",id).eq("locked",true)` read, ordered by `id`; both kept throw-on-error.
+  Now scores every locked prediction for a match (would only have mattered past ~1000 users, but
+  removes the silent-wrong-points hazard). (3) **`moment_likes`** (`app/moments/page.tsx`) — the
+  `.in("moment_id", momentIds)` read, ordered by `id`, so like counts stay correct at any volume.
+  (4) **`moment_comments`** (`app/moments/page.tsx`) — the `.in("moment_id", momentIds)
+  .order("created_at")` read; `.order()` alone does NOT paginate, so added `.order("id")` tiebreak +
+  chunked `.range()` looping (created_at stays the display order) — full comment threads load
+  regardless of count. `npm run build` clean and all 21 scoring tests pass.
