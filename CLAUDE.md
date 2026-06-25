@@ -779,3 +779,10 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   column reading `sets_won` (0–4); still a bragging tally that doesn't sum into Total (the +5s live
   in Total via the view), caption unchanged. §2.9 rewritten to the 4-of-6 rule. `npm run build`
   clean and all 21 scoring tests pass.
+- Removed the "2x used" column from the leaderboard display (round-2 feature concluded); the 2x
+  doubled points remain in totals, and the used_2x data is retained in the DB. **Display-only —
+  no scoring, recompute, view, or schema changes.** `app/leaderboard/page.tsx` drops the "2x used"
+  `<th>` header cell and the `{r.twox_used ?? 0}` row `<td>`; all other columns (Exact/Winner/GD/
+  Scorers/Underdog/Sets Won) and the gold **Total** are unchanged — Total still reflects the
+  already-doubled 2x match points. `twox_used` stays in the `leaderboard` view and `predictions.used_2x`
+  stays in the DB (harmless, just no longer rendered). `npm run build` clean and all 21 scoring tests pass.
