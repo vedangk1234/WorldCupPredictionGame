@@ -741,3 +741,13 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   .order("created_at")` read; `.order()` alone does NOT paginate, so added `.order("id")` tiebreak +
   chunked `.range()` looping (created_at stays the display order) — full comment threads load
   regardless of count. `npm run build` clean and all 21 scoring tests pass.
+- Top nav bar is now sticky (position: sticky, solid bg, z-50) so it stays accessible while
+  scrolling. **CSS/layout only — no nav contents, links, auth, or logic changes.** The
+  `<header>` in `app/components/SiteHeader.tsx` (rendered per-page on predictions, leaderboard, and
+  moments) gains `position: "sticky"`, `top: 0`, and `zIndex: 50`; it keeps its existing solid
+  `var(--pitch-900)` background (not transparent, so scrolled content doesn't show through) and its
+  `1px solid var(--pitch-line)` bottom border. The inner `maxWidth: 980` / padding wrapper is
+  untouched, so the link layout and full-width bar are preserved, and because it's `sticky` (not
+  `fixed`) normal document flow keeps the first content block from being overlapped on load — on
+  mobile it stays pinned at its existing height. `npm run build` clean and all 21 scoring tests
+  pass.

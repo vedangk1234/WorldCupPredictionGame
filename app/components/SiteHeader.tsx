@@ -23,7 +23,15 @@ export default async function SiteHeader() {
   }
 
   return (
-    <header style={{ borderBottom: "1px solid var(--pitch-line)", background: "var(--pitch-900)" }}>
+    <header
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        borderBottom: "1px solid var(--pitch-line)",
+        background: "var(--pitch-900)",
+      }}
+    >
       <div className="stripe-26" />
       <div
         style={{
