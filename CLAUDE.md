@@ -153,33 +153,34 @@ matches are always "Team A vs Team B", shown by name only.
   leaderboard column and does **not** affect the tally counts
   (winner/gd/exact/scorers/underdog) — those stay honest. Negatives are unclamped.
 
-### 2.9 Round-3 "3 consecutive winners" streak bonus
+### 2.9 Round-3 "4 of 6 per set" bonus
 
-- A repeatable **+5** for predicting **3 correct match outcomes in a row** among
-  the **round-3** matches (round-3 = the 3rd match by `kickoff_at` for **both**
-  teams; the same `lib/round3.ts → computeRound3MatchIds()` source of truth).
-- Matches are walked in **kickoff order** (`kickoff_at` ascending — the real
-  schedule order), over only the **finished** round-3 matches.
-- For a user, per match: if they have a **locked** prediction it is a **hit** when
-  they predicted the **correct OUTCOME** — i.e. `sign(predA−predB) ===
-  sign(actualA−actualB)`. So a **decisive** match is a hit when they backed the
-  correct winning side, and a **drawn** match (`actualA === actualB`) is a hit when
-  they **also predicted a draw** (`predA === predB`). A **wrong outcome** —
-  predicted a draw but the match was decisive, predicted a winner but the match
-  drew, or backed the wrong winner — **breaks** the run (running count resets to 0).
-  A match the user **never locked** is **skipped** — it neither breaks nor counts,
-  the streak carries across it.
-- Each time the running count reaches **3**, **completions += 1** and the running
-  count resets to 0 — so 6 straight hits = 2 completions. `bonus_pts =
-  completions * 5`.
-- Computed entirely in the **admin/recompute layer** (`recomputeStreaks()` in
-  `app/admin/actions.ts`, run at the end of `saveAndCompute`), **not** in the pure
-  scoring engine. Stored in `public.streak_bonus` (`user_id`, `completions`,
-  `bonus_pts`); the `leaderboard` view exposes `streak_completions` and folds
-  `bonus_pts` into `total_pts`. The overall leaderboard shows a **"3 Consecutive"**
-  tally column (= completion count, default 0); like the other count columns it is
-  a bragging tally and does not itself sum into the total — the +5s already live in
-  Total via the view.
+- A flat **+5** per **set won**, over **4 fixed sets** of 6 round-3 matches each
+  (max **+20**). The four sets are **independent — no carry-forward** between them.
+- The sets are **HARDCODED by match id** (NOT derived from date/timezone, so the
+  grouping is identical for every user) in `lib/round3sets.ts` as `ROUND3_SETS`:
+  - **SET_1** = `[9, 11, 13, 14, 2, 5]`
+  - **SET_2** = `[28, 30, 33, 35, 20, 24]`
+  - **SET_3** = `[49, 50, 46, 47, 37, 40]`
+  - **SET_4** = `[69, 71, 64, 66, 57, 59]`
+- For each user, per set: count how many of the set's 6 matches the user got the
+  **correct OUTCOME** on. A match counts as correct only when it is **finished**
+  AND the user has a **locked** prediction AND `sign(predA−predB) ===
+  sign(actualA−actualB)` — i.e. they backed the correct winning side, or predicted
+  a draw that actually drew. Unfinished / unlocked / wrong = not correct (an
+  unplayed match in a set is simply not yet a correct one). **≥ 4** correct
+  outcomes in a set ⇒ that set is **won** (+5).
+- Computed entirely in the **admin/recompute layer** (`recomputeSetBonus()` in
+  `app/admin/actions.ts`, run at the end of `saveAndCompute` after
+  `recomputeMatch`), **not** in the pure scoring engine — so finishing or
+  correcting any match refreshes everyone's set bonuses. The query for the 24 set
+  matches' locked predictions is paged in 1000-row chunks. Stored idempotently in
+  `public.streak_bonus` (`user_id`, `completions` = **sets won**, `bonus_pts` =
+  `completions * 5`); the `leaderboard` view exposes `sets_won` and folds
+  `bonus_pts` into `total_pts`. The overall leaderboard shows a **"Sets Won"**
+  tally column (0–4, default 0); like the other count columns it is a bragging
+  tally and does not itself sum into the total — the +5s already live in Total via
+  the view.
 
 ---
 
@@ -751,3 +752,30 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `fixed`) normal document flow keeps the first content block from being overlapped on load — on
   mobile it stays pinned at its existing height. `npm run build` clean and all 21 scoring tests
   pass.
+- **Replaced the round-3 "3 consecutive winners" streak bonus with a "4 of 6 per set" bonus (see
+  §2.9).** The repeatable-3-in-a-row streak is **gone**; in its place a flat **+5 per set won**
+  over **4 fixed sets** of 6 round-3 matches (max **+20**, sets independent, no carry-forward).
+  **Scoring engine `lib/scoring.ts` is UNTOUCHED** — the set logic lives entirely in the admin
+  layer; `npm run test:scoring` (21 cases) still passes. **Prereq (already in Supabase):** the
+  `streak_bonus` table is **reused** (`completions` now = sets won, `bonus_pts = completions*5`)
+  and the `leaderboard` view now exposes **`sets_won`** (renamed from `streak_completions`), still
+  folding `bonus_pts` into `total_pts`. New `lib/round3sets.ts` is the single source of truth for
+  set membership: `ROUND3_SETS` = the 4 hardcoded sets `SET_1 [9,11,13,14,2,5]`,
+  `SET_2 [28,30,33,35,20,24]`, `SET_3 [49,50,46,47,37,40]`, `SET_4 [69,71,64,66,57,59]` — grouped
+  by **match id** (NOT date/timezone), plus `ALL_SET_MATCH_IDS` (the 24 ids), `SET_WIN_THRESHOLD`
+  (4) and `SET_BONUS_POINTS` (5). **Admin** (`app/admin/actions.ts`): `recomputeStreaks()` and its
+  consecutive-walk logic were **deleted** and replaced by `recomputeSetBonus(supabase)` — loads
+  the finished/scored state of the 24 set matches (→ actual outcome `sign`), pages all **locked**
+  predictions for those 24 ids in 1000-row chunks (no truncation), and for every user counts, per
+  set, how many of its 6 matches are a **correct outcome** (finished + locked + `sign(predA−predB)
+  === sign(actualA−actualB)`); **≥ 4** correct ⇒ set won. `sets_won` = number of sets won (0–4),
+  `bonus_pts = sets_won * 5`; idempotent delete-then-insert into `streak_bonus`, rows with 0
+  removed. It is still called at the **END of `saveAndCompute`** (after `recomputeMatch`), so
+  finishing/correcting any match refreshes everyone's set bonuses — and recompute retroactively
+  awards already-finished sets (e.g. Set 1). The shared `sign()` helper stays; `lib/round3.ts →
+  computeRound3MatchIds()` is **still used** by `recomputeMatch` for the superstar round-3 check —
+  left intact. `lib/types.ts`: `LeaderboardRow.streak_completions` → `sets_won`. **Leaderboard UI**
+  (`app/leaderboard/page.tsx`): the **"3 Consecutive"** column was replaced by a **"Sets Won"**
+  column reading `sets_won` (0–4); still a bragging tally that doesn't sum into Total (the +5s live
+  in Total via the view), caption unchanged. §2.9 rewritten to the 4-of-6 rule. `npm run build`
+  clean and all 21 scoring tests pass.

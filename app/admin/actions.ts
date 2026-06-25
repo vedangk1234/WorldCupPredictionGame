@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { scorePrediction } from "@/lib/scoring";
 import { computeRound3MatchIds } from "@/lib/round3";
+import {
+  ROUND3_SETS,
+  ALL_SET_MATCH_IDS,
+  SET_WIN_THRESHOLD,
+  SET_BONUS_POINTS,
+} from "@/lib/round3sets";
 import type { GoalEntry } from "@/lib/types";
 
 type ServerClient = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
@@ -130,15 +136,15 @@ export async function saveAndCompute(
     };
   }
 
-  // Refresh everyone's round-3 "3 consecutive correct winners" streak bonuses —
-  // finishing or correcting any match can change a streak. Idempotent.
+  // Refresh everyone's round-3 "4 of 6 per set" bonuses — finishing or
+  // correcting any match can change a set's correct-outcome tally. Idempotent.
   try {
-    await recomputeStreaks(supabase);
+    await recomputeSetBonus(supabase);
   } catch (e) {
     revalidateAdmin(matchId);
     return {
       ok: false,
-      message: `Result + points saved, but streak bonuses failed to compute: ${(e as Error).message}`,
+      message: `Result + points saved, but set bonuses failed to compute: ${(e as Error).message}`,
     };
   }
 
@@ -280,93 +286,74 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Recompute the round-3 "3 consecutive correct winner predictions" streak bonus
-// for EVERY user, idempotently (see CLAUDE.md §2.9). Walks the FINISHED round-3
-// matches in KICKOFF order; for each user, a match is a "hit" when they have a
-// LOCKED prediction whose predicted decisive winner matches the actual decisive
-// winner. A wrong winner OR any draw (predicted or actual) BREAKS the run (reset
-// to 0). A match the user never locked is SKIPPED (carries across, no break).
-// Every 3rd consecutive hit = 1 completion (+5) and resets the running count, so
-// 6 straight = 2 completions. Only FINISHED matches count.
+// Recompute the round-3 "4 of 6 per set" bonus for EVERY user, idempotently
+// (see CLAUDE.md §2.9). There are 4 HARDCODED sets of 6 round-3 match ids each
+// (lib/round3sets.ts) — grouped by MATCH ID so the sets are identical for all
+// users regardless of timezone. For each set, count how many of its 6 matches
+// the user got the CORRECT OUTCOME on (match FINISHED + a LOCKED prediction +
+// predicted the correct winning side OR predicted a draw that actually drew —
+// the same sign(predA-predB) === sign(actualA-actualB) test used elsewhere).
+// >= 4 correct outcomes wins that set for +5. The four sets are independent (no
+// carry-forward); a user wins 0–4 sets (0 to +20).
 //
-// The result lands in public.streak_bonus (user_id, completions, bonus_pts =
-// completions*5); the leaderboard view exposes streak_completions and folds
+// The result lands in public.streak_bonus (user_id, completions = sets won,
+// bonus_pts = sets won * 5); the leaderboard view exposes sets_won and folds
 // bonus_pts into total_pts. The pure scoring engine is NOT touched.
 // Not exported as an action (helper only).
 // ---------------------------------------------------------------------------
 const sign = (n: number): number => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
-async function recomputeStreaks(supabase: ServerClient): Promise<void> {
-  // All matches → round-3 set (3rd by kickoff for BOTH teams) + per-match result.
+async function recomputeSetBonus(supabase: ServerClient): Promise<void> {
+  // Per-match actual result for every set match (need finished + score).
   const { data: allMatches, error: allErr } = await supabase
     .from("matches")
-    .select("id, team_a_id, team_b_id, kickoff_at, finished, score_a, score_b");
+    .select("id, finished, score_a, score_b")
+    .in("id", ALL_SET_MATCH_IDS);
   if (allErr) throw new Error(allErr.message);
-  const matches = allMatches ?? [];
-  const round3Ids = computeRound3MatchIds(matches);
 
-  // FINISHED round-3 matches, in kickoff order (id breaks ties — matches round3.ts).
-  const ordered = matches
-    .filter(
-      (m) =>
-        round3Ids.has(m.id as number) &&
-        m.finished === true &&
-        m.score_a !== null &&
-        m.score_b !== null,
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.kickoff_at as string).getTime() -
-          new Date(b.kickoff_at as string).getTime() || (a.id as number) - (b.id as number),
-    );
-
-  // actual outcome sign per match (0 = draw, ±1 = decisive winner).
+  // Finished set matches → actual outcome sign (0 = draw, ±1 = decisive winner).
   const actualSign = new Map<number, number>();
-  for (const m of ordered) {
-    actualSign.set(m.id as number, sign((m.score_a as number) - (m.score_b as number)));
+  for (const m of allMatches ?? []) {
+    if (m.finished === true && m.score_a !== null && m.score_b !== null) {
+      actualSign.set(m.id as number, sign((m.score_a as number) - (m.score_b as number)));
+    }
   }
 
-  // Locked predictions for those matches: user → match → predicted winner sign.
-  const orderedIds = ordered.map((m) => m.id as number);
+  // Locked predictions for the 24 set matches: user → match → predicted sign.
+  // Page in 1000-row chunks (PostgREST caps responses at 1000) so ALL locked
+  // predictions load — a truncated read would silently drop predictions and
+  // compute WRONG set bonuses. Ordered by id for stable paging.
+  type SetPredRow = {
+    user_id: string;
+    match_id: number;
+    score_a: number;
+    score_b: number;
+  };
+  const preds: SetPredRow[] = [];
+  const SET_PRED_PAGE = 1000;
+  for (let from = 0; ; from += SET_PRED_PAGE) {
+    const { data: chunk, error: predErr } = await supabase
+      .from("predictions")
+      .select("user_id, match_id, score_a, score_b")
+      .eq("locked", true)
+      .in("match_id", ALL_SET_MATCH_IDS)
+      .order("id", { ascending: true })
+      .range(from, from + SET_PRED_PAGE - 1);
+    if (predErr) throw new Error(predErr.message);
+    const rows = (chunk ?? []) as SetPredRow[];
+    preds.push(...rows);
+    if (rows.length < SET_PRED_PAGE) break;
+  }
+
   const predByUser = new Map<string, Map<number, number>>();
-  if (orderedIds.length > 0) {
-    // Page in 1000-row chunks (PostgREST caps responses at 1000) so ALL locked
-    // round-3 predictions load — a truncated read would silently drop locked
-    // predictions and compute WRONG streak completions. Ordered by id for stable
-    // paging.
-    type StreakPredRow = {
-      user_id: string;
-      match_id: number;
-      score_a: number;
-      score_b: number;
-    };
-    const preds: StreakPredRow[] = [];
-    const STREAK_PRED_PAGE = 1000;
-    for (let from = 0; ; from += STREAK_PRED_PAGE) {
-      const { data: chunk, error: predErr } = await supabase
-        .from("predictions")
-        .select("user_id, match_id, score_a, score_b")
-        .eq("locked", true)
-        .in("match_id", orderedIds)
-        .order("id", { ascending: true })
-        .range(from, from + STREAK_PRED_PAGE - 1);
-      if (predErr) throw new Error(predErr.message);
-      const rows = (chunk ?? []) as StreakPredRow[];
-      preds.push(...rows);
-      if (rows.length < STREAK_PRED_PAGE) break;
-    }
-    for (const p of preds ?? []) {
-      const uid = p.user_id as string;
-      const inner = predByUser.get(uid) ?? new Map<number, number>();
-      inner.set(
-        p.match_id as number,
-        sign((p.score_a as number) - (p.score_b as number)),
-      );
-      predByUser.set(uid, inner);
-    }
+  for (const p of preds) {
+    const uid = p.user_id as string;
+    const inner = predByUser.get(uid) ?? new Map<number, number>();
+    inner.set(p.match_id as number, sign((p.score_a as number) - (p.score_b as number)));
+    predByUser.set(uid, inner);
   }
 
-  // For each user, walk the finished round-3 matches in kickoff order.
+  // For each user, count sets won (>= 4 correct outcomes among a set's 6 matches).
   const upsertRows: {
     user_id: string;
     completions: number;
@@ -375,37 +362,26 @@ async function recomputeStreaks(supabase: ServerClient): Promise<void> {
   }[] = [];
   const now = new Date().toISOString();
   for (const [uid, byMatch] of predByUser) {
-    let running = 0;
-    let completions = 0;
-    for (const mid of orderedIds) {
-      if (!byMatch.has(mid)) continue; // never locked → skip, no break
-      const predSign = byMatch.get(mid)!;
-      const actSign = actualSign.get(mid)!;
-      // Hit = correct OUTCOME: a correctly-predicted draw counts, as does the
-      // correct winning side in a decisive match. A wrong outcome (predicted draw
-      // but actual decisive, predicted winner but actual draw, or wrong winner)
-      // breaks the run.
-      const hit = predSign === actSign;
-      if (hit) {
-        running++;
-        if (running === 3) {
-          completions++;
-          running = 0;
-        }
-      } else {
-        running = 0; // wrong outcome breaks the run
+    let setsWon = 0;
+    for (const set of ROUND3_SETS) {
+      let correct = 0;
+      for (const mid of set) {
+        if (!actualSign.has(mid)) continue; // not finished yet → not a correct one
+        if (!byMatch.has(mid)) continue; // never locked → not correct
+        if (byMatch.get(mid)! === actualSign.get(mid)!) correct++;
       }
+      if (correct >= SET_WIN_THRESHOLD) setsWon++;
     }
     upsertRows.push({
       user_id: uid,
-      completions,
-      bonus_pts: completions * 5,
+      completions: setsWon,
+      bonus_pts: setsWon * SET_BONUS_POINTS,
       updated_at: now,
     });
   }
 
   // Clean slate, then re-insert — keeps the bonus idempotent and removes stale
-  // rows for users whose streaks dropped to 0 after a correction.
+  // rows for users whose set count dropped to 0 after a correction.
   const { error: delErr } = await supabase
     .from("streak_bonus")
     .delete()
