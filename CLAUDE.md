@@ -933,3 +933,10 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   32)" addendum (FT draw → predict ET total; ET scorers only on added goals; level ET → pick the
   shoot-out winner for +5; superstars score anywhere). `npm run build` clean and all **29** scoring
   tests pass (engine untouched).
+- **/predictions now redirects to / (home/RO32) — old route was 404ing after the page move.**
+  Routing only — no logic/scoring/UI changes. Added an `async redirects()` to `next.config.mjs`
+  returning `{ source: "/predictions", destination: "/", permanent: true }` (merged alongside the
+  existing `images` config). The predictions page itself was moved earlier (home = RO32,
+  `/group-stage` = group matches), so `/predictions` had no route and 404'd for old
+  bookmarks/links; it now permanently redirects to the home page at the edge. `/group-stage` and
+  all other routes are unchanged. `npm run build` clean and all 29 scoring tests pass.
