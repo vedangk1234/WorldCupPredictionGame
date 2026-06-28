@@ -186,10 +186,23 @@ field.
 - **Penalty portion — ONLY when the user predicted a LEVEL ET AND the match actually
   ended ET level and went to a shoot-out** (`pen_winner_team_id` set): **+5** if the
   predicted shoot-out winner matches the actual one, else 0 (everything else kept).
+- **FINAL-OUTCOME CONTINGENCY (FT-draw predictions only):** when the user predicted
+  an FT draw, the four **exact-score bonuses — FT exact (+5), ET exact (+5), ET
+  winner (+3), pen (+5)** — are awarded **only if the user got the final outcome
+  right**. The final outcome is correct when: (a) for a **decisive ET** prediction,
+  actual ET is decisive AND the predicted ET winner side matches; (b) for a **level
+  ET → pens** prediction, the match actually went to pens AND the predicted shoot-out
+  winner matches the actual one. If the final outcome is **WRONG**, those four
+  bonuses are all **zeroed**, and the user keeps **only**: FT GD (+1 if FT margins
+  match), ET GD (+1 if ET margins match), FT + ET scorer points, and the superstar
+  ±3. (So exact-score bonuses are contingent on the result; GD + scorer + superstar
+  are always kept as earned.) Note: FT exact is normally an FT-only concept, but on
+  this FT-draw branch it is gated by the final outcome too. Decisive-FT ro32
+  predictions (no ET) are **unaffected** — they score exactly like the group stage.
 - **Superstar (ro32):** applies on **every** ro32 match (not just round-3). For each
   DISTINCT picked superstar across **FT + ET** scorer picks: **+3** if they scored
   **≥ 1 real goal anywhere** in the match (FT or ET), else **−3**. Folds into total
-  only.
+  only. Always kept (not gated by the final outcome).
 - **What lands where:** only the FT components become leaderboard columns/tallies
   (`winner_pts`/`gd_pts`/`exact_pts`/`scorer_pts`/`underdog_pts` + the count flags,
   all FT-based). The ET points, penalty points, and superstar delta fold into
@@ -940,3 +953,20 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `/group-stage` = group matches), so `/predictions` had no route and 404'd for old
   bookmarks/links; it now permanently redirects to the home page at the edge. `/group-stage` and
   all other routes are unchanged. `npm run build` clean and all 29 scoring tests pass.
+- **ro32 exact-score bonuses are now CONTINGENT on getting the final outcome right (see §2.10).**
+  Behaviour change to the knockout FT-draw branch only — **engine + tests ONLY; no admin, schema,
+  RLS, UI, or group-stage changes**. Previously a user who predicted an FT draw kept FT exact (and,
+  before, ET exact) even when their ultimate result was wrong. Now, on an **FT-draw** ro32
+  prediction, `lib/scoring.ts` computes a `finalOutcomeCorrect` boolean: for a **decisive ET**
+  prediction it's correct iff actual ET is decisive AND the predicted ET winner side matches; for a
+  **level ET → pens** prediction it's correct iff the match went to pens AND the predicted shoot-out
+  winner matches the actual one. When `finalOutcomeCorrect` is **false**, the four exact-score
+  bonuses — **FT exact (+5), ET exact (+5), ET winner (+3), pen (+5)** — are all **zeroed**; the
+  user keeps **only** FT GD (+1 if margins match), ET GD (+1 if margins match), FT + ET scorer
+  points, and the superstar ±3. A **correct** final outcome awards the full set exactly as before.
+  Implementation: `exactPts` became a `let` so the FT-draw branch can gate it; the gate lives at the
+  end of the `isRo32 && predictedFtDraw` block. Decisive-FT ro32 (no ET) and all group-stage scoring
+  are byte-identical. **Tests** (`scripts/test-scoring.ts`): case 26 (wrong ET winner) and case 30
+  (wrong pen winner) updated to the new rule (their FT/ET exacts now drop to 0); added **case 31**
+  (exact FT predicted but wrong ET winner → exacts zeroed, only FT GD + scorer kept). Now **31 cases,
+  all pass**. `npm run build` clean.

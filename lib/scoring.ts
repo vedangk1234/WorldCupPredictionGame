@@ -113,8 +113,10 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   // this is 0 === 0, so a correctly-predicted draw earns it.
   const gdPts = predMargin === actMargin ? 1 : 0;
 
-  // Exact FT score: +5 for the precise scoreline.
-  const exactPts =
+  // Exact FT score: +5 for the precise scoreline. NOTE: on the ro32 FT-draw
+  // branch this is later gated by `finalOutcomeCorrect` (see below) — a wrong
+  // final outcome forfeits it. `let` so that branch can zero it.
+  let exactPts =
     input.predScoreA === input.actualScoreA &&
     input.predScoreB === input.actualScoreB
       ? 5
@@ -184,6 +186,25 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
     if (predEtLevel && actEtLevel && input.penWinnerTeamId != null) {
       penPts =
         (input.predPenWinnerTeamId ?? null) === input.penWinnerTeamId ? 5 : 0;
+    }
+
+    // FINAL-OUTCOME gate: the exact-score bonuses (FT exact, ET exact, ET
+    // winner, pen) are CONTINGENT on the user getting the ultimate result right.
+    //   - predicted a DECISIVE ET → correct iff actual ET decisive AND the
+    //     predicted ET winning side matches.
+    //   - predicted a LEVEL ET → pens → correct iff the match went to pens AND
+    //     the predicted shoot-out winner matches the actual one.
+    // A WRONG final outcome forfeits FT exact / ET exact / ET winner / pen, but
+    // KEEPS the FT GD, ET GD, scorer (FT + ET), and superstar points as earned.
+    const finalOutcomeCorrect = predEtLevel
+      ? input.penWinnerTeamId != null &&
+        (input.predPenWinnerTeamId ?? null) === input.penWinnerTeamId
+      : actEtMargin !== 0 && sign(predEtMargin) === sign(actEtMargin);
+    if (!finalOutcomeCorrect) {
+      exactPts = 0;
+      etExactPts = 0;
+      etWinnerPts = 0;
+      penPts = 0;
     }
   }
 

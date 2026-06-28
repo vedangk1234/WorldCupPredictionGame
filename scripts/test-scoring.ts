@@ -92,11 +92,12 @@ const cases: Case[] = [
     predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 1,
     expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
 
-  // e) ET winner WRONG (pred 1–1 → 2–1 ET, actual 1–1 / 1–2 ET) → no ET +3/+5, no ET GD (margins differ),
-  //    keep FT pts (0+1+5) + ET scorer (player 700 scored a real ET goal → +2) = 8.
+  // e) ET winner WRONG (pred 1–1 → 2–1 ET, actual 1–1 / 1–2 ET). Wrong final outcome → FT exact, ET exact,
+  //    ET winner all FORFEITED (0). Keeps FT GD+1 (FT draw matches) + ET scorer (player 700 real ET goal → +2)
+  //    = 3. (ET GD already 0 — margins differ.)
   { num: 26, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 8, correctScorers: 0 } },
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 
   // f1) Superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
   //     pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1. FT all wrong → 0; superstar +3.
@@ -113,6 +114,23 @@ const cases: Case[] = [
   { num: 29, stage: 'group', pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null,
     predEt: [5, 0], etActual: [5, 0], predPen: 1, penWinner: 1,
     expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
+
+  // h) WRONG penalty winner. pred FT 1–1 → ET 1–1 (level) → pens TeamA(1); actual FT 1–1 / ET 1–1 / pens TeamB(2).
+  //    Wrong final outcome → FT exact AND ET exact both FORFEITED (0), plus the pen +5 lost. Keeps FT GD+1,
+  //    ET GD+1 (0==0), and the correctly-picked FT scorer (player 800 real FT goal → +2). total = 1+1+2 = 4.
+  { num: 30, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [n(800), n(801)], picks: [800], underdog: null,
+    predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 2,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 1, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 1 } },
+
+  // i) EXACT FT predicted but WRONG ET winner → exacts zeroed, only GD(s) + scorers kept.
+  //    pred FT 2–2 (== actual FT 2–2, so FT exact WOULD be +5) → decisive ET [4,3] (A wins by 1);
+  //    actual ET [3,4] (B wins by 1) → wrong ET winner. (A decisive-ET prediction can never have a
+  //    matching exact ET with the wrong winner, so etExact is naturally 0; the point is FT exact is
+  //    FORFEITED.) Keeps FT GD+1 (draw matches) + FT scorer (player 800 real FT goal → +2). ET GD is 0
+  //    (margins +1 vs −1 differ). total = 1+2 = 3.
+  { num: 31, stage: 'ro32', pred: [2, 2], actual: [2, 2], goals: [n(800)], picks: [800], underdog: null,
+    predEt: [4, 3], etActual: [3, 4], etGoals: [], etPicks: [],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 1 } },
 ];
 
 let failures = 0;
