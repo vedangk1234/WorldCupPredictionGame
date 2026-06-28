@@ -78,7 +78,6 @@ export default async function LeaderboardPage() {
                   <th>GD</th>
                   <th>Scorers</th>
                   <th>Underdog</th>
-                  <th>Sets Won</th>
                   <th>Total</th>
                 </tr>
               </thead>
@@ -108,7 +107,6 @@ export default async function LeaderboardPage() {
                       <td className="tnum">{r.gd_count}</td>
                       <td className="tnum">{r.scorers_count}</td>
                       <td className="tnum">{r.underdog_count}</td>
-                      <td className="tnum">{r.sets_won ?? 0}</td>
                       <td
                         className="display tnum"
                         style={{ color: "var(--gold-300)", fontWeight: 800, fontSize: 17 }}

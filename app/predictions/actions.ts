@@ -9,6 +9,17 @@ export interface ActionResult {
   message: string;
 }
 
+// Knockout (ro32) prediction extras supplied at lock time. All null/empty for a
+// group fixture or when the user predicted a decisive full-time score (no ET).
+// See CLAUDE.md §2.10. The server NEVER trusts these — it re-derives the stage
+// from the stored match and re-validates every field below.
+export interface Ro32LockExtras {
+  predEtA: number | null; // predicted extra-time TOTAL (includes the FT goals)
+  predEtB: number | null;
+  predPenWinnerTeamId: number | null; // predicted shoot-out winner (level ET only)
+  scorerIdsEt: number[]; // ET scorer picks (only when ET adds goals over FT)
+}
+
 // Total "2x" doublers a user gets for the whole tournament.
 const MAX_2X_TOKENS = 3;
 
@@ -24,6 +35,12 @@ const MAX_2X_TOKENS = 3;
 // server-side (never trust the client): the match must be 2x-eligible (round-2
 // by kickoff order AND no underdog set) and the user must have a doubler left.
 // used_2x is only ever set true via a lock; the draft path keeps it false.
+//
+// `ro32` carries the knockout extra-time / penalty / ET-scorer prediction. It is
+// honoured ONLY when the stored match stage is 'ro32' AND the user predicted an
+// FT draw; otherwise the ET/pen fields are forced null and ET scorers dropped.
+// All of it is re-validated server-side (ET total >= FT per team, pen winner
+// required + valid on a level ET, ET scorers only up to the goals added in ET).
 async function writePrediction(
   matchId: number,
   scoreA: number,
@@ -31,6 +48,7 @@ async function writePrediction(
   scorerPlayerIds: number[],
   lock: boolean,
   use2x: boolean,
+  ro32: Ro32LockExtras | null,
 ): Promise<ActionResult> {
   const { user, supabase } = await requireUser();
 
@@ -46,7 +64,7 @@ async function writePrediction(
   // Load the match and confirm predictions are still open.
   const { data: match, error: loadErr } = await supabase
     .from("matches")
-    .select("team_a_id, team_b_id, predictions_close_at, finished, underdog_team_id")
+    .select("team_a_id, team_b_id, predictions_close_at, finished, underdog_team_id, stage")
     .eq("id", matchId)
     .single();
   if (loadErr || !match) return { ok: false, message: "Match not found." };
@@ -110,7 +128,74 @@ async function writePrediction(
     }
   }
 
-  // Dedupe scorer picks and validate the cap + squad membership.
+  // ----- Resolve + validate the knockout ET / penalty / ET-scorer fields -----
+  // The stored stage is the authority. ET only applies on an ro32 match whose
+  // PREDICTED full-time score is a draw (the signal the user expects extra time).
+  const isKnockout = (match.stage as string) === "ro32";
+  const predFtDraw = scoreA === scoreB;
+  const wantEt = isKnockout && predFtDraw;
+
+  let predEtA: number | null = null;
+  let predEtB: number | null = null;
+  let predPenWinnerTeamId: number | null = null;
+  let etScorerIds: number[] = [];
+
+  if (wantEt) {
+    const etA = ro32?.predEtA ?? null;
+    const etB = ro32?.predEtB ?? null;
+    if (
+      etA === null ||
+      etB === null ||
+      !Number.isInteger(etA) ||
+      !Number.isInteger(etB) ||
+      etA < 0 ||
+      etB < 0
+    ) {
+      return {
+        ok: false,
+        message: "Enter the extra-time total score as whole numbers (0 or more).",
+      };
+    }
+    if (etA < scoreA || etB < scoreB) {
+      return {
+        ok: false,
+        message: "Extra-time total can't be lower than full-time.",
+      };
+    }
+    predEtA = etA;
+    predEtB = etB;
+
+    // ET scorers are allowed only up to the number of goals ADDED in extra time
+    // (ET total − FT total). No added goals ⇒ no ET scorer picks.
+    const addedGoals = etA + etB - (scoreA + scoreB);
+    etScorerIds = Array.from(new Set(ro32?.scorerIdsEt ?? []));
+    if (etScorerIds.length > addedGoals) {
+      return {
+        ok: false,
+        message:
+          addedGoals === 0
+            ? "No goals added in extra time — you can't name any extra-time scorers."
+            : `You can name at most ${addedGoals} extra-time scorer(s).`,
+      };
+    }
+
+    // A level ET goes to penalties → a shoot-out winner is required.
+    if (etA === etB) {
+      const pen = ro32?.predPenWinnerTeamId ?? null;
+      if (pen !== match.team_a_id && pen !== match.team_b_id) {
+        return {
+          ok: false,
+          message: "Extra time is level — pick the penalty shoot-out winner.",
+        };
+      }
+      predPenWinnerTeamId = pen;
+    } else {
+      // Decisive in ET → no shoot-out.
+      predPenWinnerTeamId = null;
+    }
+  }
+
+  // Dedupe FT scorer picks and validate the cap.
   const uniqueScorerIds = Array.from(new Set(scorerPlayerIds));
   if (uniqueScorerIds.length > scoreA + scoreB) {
     return {
@@ -118,13 +203,16 @@ async function writePrediction(
       message: `You can name at most ${scoreA + scoreB} scorer(s) for a ${scoreA}–${scoreB} prediction.`,
     };
   }
-  if (uniqueScorerIds.length > 0) {
+
+  // Validate every picked scorer (FT + ET) belongs to one of the two squads.
+  const allPickIds = Array.from(new Set([...uniqueScorerIds, ...etScorerIds]));
+  if (allPickIds.length > 0) {
     const { data: squad } = await supabase
       .from("players")
       .select("id")
       .in("team_id", [match.team_a_id, match.team_b_id]);
     const validIds = new Set((squad ?? []).map((p) => p.id as number));
-    for (const id of uniqueScorerIds) {
+    for (const id of allPickIds) {
       if (!validIds.has(id)) {
         return { ok: false, message: "A picked scorer is not in either squad." };
       }
@@ -144,6 +232,10 @@ async function writePrediction(
         locked: false,
         // Never set 2x on the unlocked write — it's applied atomically at lock.
         used_2x: false,
+        // Knockout ET / penalty prediction (null for group or a decisive FT).
+        pred_et_a: predEtA,
+        pred_et_b: predEtB,
+        pred_pen_winner_team_id: predPenWinnerTeamId,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,match_id" },
@@ -155,19 +247,27 @@ async function writePrediction(
   }
   const predictionId = saved.id as number;
 
-  // Replace scorers wholesale.
+  // Replace scorers wholesale — FT picks (is_et=false) + ET picks (is_et=true).
   const { error: delErr } = await supabase
     .from("prediction_scorers")
     .delete()
     .eq("prediction_id", predictionId);
   if (delErr) return { ok: false, message: delErr.message };
 
-  if (uniqueScorerIds.length > 0) {
-    const rows = uniqueScorerIds.map((pid) => ({
+  const scorerRows = [
+    ...uniqueScorerIds.map((pid) => ({
       prediction_id: predictionId,
       player_id: pid,
-    }));
-    const { error: insErr } = await supabase.from("prediction_scorers").insert(rows);
+      is_et: false,
+    })),
+    ...etScorerIds.map((pid) => ({
+      prediction_id: predictionId,
+      player_id: pid,
+      is_et: true,
+    })),
+  ];
+  if (scorerRows.length > 0) {
+    const { error: insErr } = await supabase.from("prediction_scorers").insert(scorerRows);
     if (insErr) return { ok: false, message: insErr.message };
   }
 
@@ -181,7 +281,9 @@ async function writePrediction(
     if (lockErr) return { ok: false, message: lockErr.message };
   }
 
-  revalidatePath("/predictions");
+  // Group fixtures live at /group-stage; ro32 cards live on the home page.
+  revalidatePath("/group-stage");
+  revalidatePath("/");
   return {
     ok: true,
     message: lock
@@ -193,13 +295,16 @@ async function writePrediction(
 }
 
 // Save AND lock in one atomic action — permanent, no further edits. `use2x`
-// applies the doubler at lock time (validated server-side).
+// applies the doubler at lock time (validated server-side). `ro32` carries the
+// knockout ET / penalty / ET-scorer prediction (null for group fixtures and
+// decisive-FT predictions; re-validated server-side).
 export async function lockPrediction(
   matchId: number,
   scoreA: number,
   scoreB: number,
   scorerPlayerIds: number[],
   use2x: boolean,
+  ro32: Ro32LockExtras | null = null,
 ): Promise<ActionResult> {
-  return writePrediction(matchId, scoreA, scoreB, scorerPlayerIds, true, use2x);
+  return writePrediction(matchId, scoreA, scoreB, scorerPlayerIds, true, use2x, ro32);
 }

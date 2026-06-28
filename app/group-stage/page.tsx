@@ -2,7 +2,7 @@ import SiteHeader from "@/app/components/SiteHeader";
 import { requireUser } from "@/lib/auth";
 import { computeRound2MatchIds } from "@/lib/round2";
 import { computeRound3MatchIds } from "@/lib/round3";
-import MatchCard from "./MatchCard";
+import MatchCard from "@/app/predictions/MatchCard";
 import type {
   MatchState,
   CardPlayer,
@@ -10,7 +10,7 @@ import type {
   RevealRow,
   MatchPointsRow,
   MatchGoalRow,
-} from "./MatchCard";
+} from "@/app/predictions/MatchCard";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +75,7 @@ function matchState(
   return "open";
 }
 
-export default async function PredictionsPage() {
+export default async function GroupStagePage() {
   const { user, supabase, timeZone } = await requireUser();
 
   // All matches, soonest first, with both teams + underdog joined.
@@ -88,6 +88,9 @@ export default async function PredictionsPage() {
        team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url),
        underdog:teams!matches_underdog_team_id_fkey(id, name, code, flag_url)`,
     )
+    // Group-stage page shows ONLY group fixtures — the 16 ro32 matches have their
+    // own (separate-delivery) user UI and must not leak into this list.
+    .eq("stage", "group")
     .order("kickoff_at", { ascending: true });
   const matches = (matchesData ?? []) as unknown as MatchRow[];
 
@@ -296,6 +299,7 @@ export default async function PredictionsPage() {
         teamId: g.players?.team_id ?? 0,
         minute: g.minute,
         isOwnGoal: g.is_own_goal,
+        isEt: false, // group fixtures never have extra-time goals
       });
       goalsByMatch.set(g.match_id, list);
     }
@@ -327,66 +331,6 @@ export default async function PredictionsPage() {
           Make Predictions
         </h1>
 
-        {/* How scoring works — collapses on small screens via <details>. */}
-        <details className="rules-banner" open>
-          <summary
-            style={{
-              cursor: "pointer",
-              fontWeight: 700,
-              fontSize: 14,
-              color: "var(--chalk)",
-              listStyle: "none",
-            }}
-          >
-            ⚽ How scoring works
-          </summary>
-          <ul
-            style={{
-              margin: "10px 0 0",
-              padding: "0 0 0 2px",
-              listStyle: "none",
-              color: "var(--chalk-dim)",
-              fontSize: 13,
-              lineHeight: 1.7,
-            }}
-          >
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Exact scoreline +5</strong> — you
-              predicted the precise final score.
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Correct match winner +3</strong> — you
-              picked the right team to win, or correctly called a draw.
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Correct goal difference +1</strong> —
-              you got the winning margin right (e.g. a win by 2). A correctly predicted draw counts
-              here too.
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Each correct goal scorer +2 per goal</strong>{" "}
-              — for every player you name who actually scores, you get +2 for each goal they score (a
-              brace = +4).
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Predicted scorer scores an own goal −1</strong>{" "}
-              — if a player you backed to score puts it into their own net instead, you lose 1 point
-              for that pick.
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Underdog win +5</strong> — some matches
-              have a designated ⚡ underdog (the team less expected to win). If you back that underdog
-              and they actually win, you earn +5 on top of your other points. No bonus if they draw
-              or lose, and matches with no ⚡ tag have no underdog.
-            </li>
-            <li>
-              <strong style={{ color: "var(--gold-300)" }}>Lock before kickoff</strong> — you must
-              lock your prediction before the match starts. An unlocked prediction doesn&apos;t
-              count — 0 points for that match.
-            </li>
-          </ul>
-        </details>
-
         {matchErr && (
           <p style={{ color: "var(--m3)", marginTop: 20 }}>
             Failed to load matches: {matchErr.message}
@@ -411,6 +355,11 @@ export default async function PredictionsPage() {
                   locked: mine.locked,
                   scorerIds: (mine.prediction_scorers ?? []).map((s) => s.player_id),
                   used2x: mine.used_2x,
+                  // Group fixtures have no knockout ET / penalty prediction.
+                  predEtA: null,
+                  predEtB: null,
+                  predPenWinnerTeamId: null,
+                  scorerIdsEt: [],
                 }
               : null;
 
@@ -432,6 +381,11 @@ export default async function PredictionsPage() {
                       scorerIds: (r.prediction_scorers ?? []).map((s) => s.player_id),
                       used2x: r.used_2x,
                       isMe: r.user_id === user.id,
+                      // Group fixtures have no knockout ET / penalty prediction.
+                      predEtA: null,
+                      predEtB: null,
+                      predPenWinnerTeamId: null,
+                      scorerIdsEt: [],
                     };
                   });
 
@@ -439,6 +393,7 @@ export default async function PredictionsPage() {
               <MatchCard
                 key={m.id}
                 matchId={m.id}
+                stage="group"
                 groupLetter={m.group_letter}
                 matchday={m.matchday}
                 kickoffAt={m.kickoff_at}
@@ -449,6 +404,9 @@ export default async function PredictionsPage() {
                 underdog={m.underdog}
                 finalScoreA={m.score_a}
                 finalScoreB={m.score_b}
+                finalEtScoreA={null}
+                finalEtScoreB={null}
+                penWinnerTeamId={null}
                 squadA={squadByTeam.get(m.team_a.id) ?? []}
                 squadB={squadByTeam.get(m.team_b.id) ?? []}
                 myPrediction={myPrediction}

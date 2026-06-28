@@ -24,6 +24,10 @@ interface MatchDetail {
   score_a: number | null;
   score_b: number | null;
   finished: boolean;
+  stage: "group" | "ro32";
+  et_score_a: number | null;
+  et_score_b: number | null;
+  pen_winner_team_id: number | null;
   team_a: JoinedTeam | null;
   team_b: JoinedTeam | null;
 }
@@ -38,6 +42,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
     .select(
       `id, group_letter, matchday, kickoff_at, predictions_close_at,
        underdog_team_id, score_a, score_b, finished,
+       stage, et_score_a, et_score_b, pen_winner_team_id,
        team_a:teams!matches_team_a_id_fkey(id, name, code, flag_url),
        team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url)`,
     )
@@ -65,17 +70,24 @@ export default async function MatchDetailPage({ params }: { params: { id: string
     team_id: number;
   }[];
 
-  // Current goals — one row per goal, each with its stored minute and own-goal flag.
+  // Current goals — one row per goal, each with its stored minute and own-goal
+  // flag. Split into full-time (is_et=false) and extra-time (is_et=true) lists.
   const { data: goalsData } = await supabase
     .from("match_goals")
-    .select("player_id, minute, is_own_goal")
+    .select("player_id, minute, is_own_goal, is_et")
     .eq("match_id", matchId)
     .order("id", { ascending: true });
-  const initialGoals: GoalEntry[] = (goalsData ?? []).map((g) => ({
-    player_id: g.player_id as number,
-    minute: (g.minute as string | null) ?? "",
-    is_own_goal: g.is_own_goal as boolean,
-  }));
+  const initialGoals: GoalEntry[] = [];
+  const initialEtGoals: GoalEntry[] = [];
+  for (const g of goalsData ?? []) {
+    const entry: GoalEntry = {
+      player_id: g.player_id as number,
+      minute: (g.minute as string | null) ?? "",
+      is_own_goal: g.is_own_goal as boolean,
+    };
+    if (g.is_et) initialEtGoals.push(entry);
+    else initialGoals.push(entry);
+  }
 
   const closed = new Date(match.predictions_close_at).getTime() <= Date.now();
   const stateLabel = match.finished
@@ -89,10 +101,10 @@ export default async function MatchDetailPage({ params }: { params: { id: string
       <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18 }} />
 
       <Link
-        href="/admin"
+        href={match.stage === "ro32" ? "/admin" : "/admin/group-stage"}
         style={{ color: "var(--chalk-dim)", fontSize: 13, textDecoration: "none" }}
       >
-        ← All matches
+        ← {match.stage === "ro32" ? "Round of 32" : "Group stage"}
       </Link>
 
       <div style={{ margin: "14px 0 6px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -135,12 +147,17 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
         <ResultForm
           matchId={matchId}
+          stage={match.stage}
           teamA={{ id: teamA.id, name: teamA.name, flag: teamA.flag_url }}
           teamB={{ id: teamB.id, name: teamB.name, flag: teamB.flag_url }}
           players={players}
           initialScoreA={match.score_a}
           initialScoreB={match.score_b}
           initialGoals={initialGoals}
+          initialEtScoreA={match.et_score_a}
+          initialEtScoreB={match.et_score_b}
+          initialEtGoals={initialEtGoals}
+          initialPenWinnerTeamId={match.pen_winner_team_id}
           finished={match.finished}
         />
       </div>

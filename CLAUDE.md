@@ -153,34 +153,57 @@ matches are always "Team A vs Team B", shown by name only.
   leaderboard column and does **not** affect the tally counts
   (winner/gd/exact/scorers/underdog) — those stay honest. Negatives are unclamped.
 
-### 2.9 Round-3 "4 of 6 per set" bonus
+### 2.9 Round-3 "4 of 6 per set" bonus — REMOVED
 
-- A flat **+5** per **set won**, over **4 fixed sets** of 6 round-3 matches each
-  (max **+20**). The four sets are **independent — no carry-forward** between them.
-- The sets are **HARDCODED by match id** (NOT derived from date/timezone, so the
-  grouping is identical for every user) in `lib/round3sets.ts` as `ROUND3_SETS`:
-  - **SET_1** = `[9, 11, 13, 14, 2, 5]`
-  - **SET_2** = `[28, 30, 33, 35, 20, 24]`
-  - **SET_3** = `[49, 50, 46, 47, 37, 40]`
-  - **SET_4** = `[69, 71, 64, 66, 57, 59]`
-- For each user, per set: count how many of the set's 6 matches the user got the
-  **correct OUTCOME** on. A match counts as correct only when it is **finished**
-  AND the user has a **locked** prediction AND `sign(predA−predB) ===
-  sign(actualA−actualB)` — i.e. they backed the correct winning side, or predicted
-  a draw that actually drew. Unfinished / unlocked / wrong = not correct (an
-  unplayed match in a set is simply not yet a correct one). **≥ 4** correct
-  outcomes in a set ⇒ that set is **won** (+5).
-- Computed entirely in the **admin/recompute layer** (`recomputeSetBonus()` in
-  `app/admin/actions.ts`, run at the end of `saveAndCompute` after
-  `recomputeMatch`), **not** in the pure scoring engine — so finishing or
-  correcting any match refreshes everyone's set bonuses. The query for the 24 set
-  matches' locked predictions is paged in 1000-row chunks. Stored idempotently in
-  `public.streak_bonus` (`user_id`, `completions` = **sets won**, `bonus_pts` =
-  `completions * 5`); the `leaderboard` view exposes `sets_won` and folds
-  `bonus_pts` into `total_pts`. The overall leaderboard shows a **"Sets Won"**
-  tally column (0–4, default 0); like the other count columns it is a bragging
-  tally and does not itself sum into the total — the +5s already live in Total via
-  the view.
+This feature (a flat +5 per set won, over 4 hardcoded sets of 6 round-3 matches)
+was **removed** when the knockouts launched. `recomputeSetBonus()` and
+`lib/round3sets.ts` are gone and the app no longer writes `streak_bonus` or shows
+the "Sets Won" column. The `streak_bonus` table and the `leaderboard.sets_won`
+view column are **left in the DB as-is** (no migration); any old `streak_bonus`
+rows still fold their `bonus_pts` into `total_pts` via the view but are never
+refreshed. See §2.10 for the knockout scoring that replaced the round-3 emphasis.
+
+### 2.10 Knockout scoring (Round of 32 — `stage = 'ro32'`)
+
+Knockout matches can't end level, so on top of the normal full-time (FT) scoring
+they add an **extra-time (ET)** portion and a **penalty** portion. The pure engine
+`lib/scoring.ts` handles all of it via `scorePrediction({ stage, … })`; group
+fixtures (`stage = 'group'`) behave **exactly as before** and ignore every ET/pen
+field.
+
+- **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
+  **+1** (includes a correct FT draw, GD 0), FT winner **+3** (only if FT is
+  decisive AND the predicted FT winner side matches — a predicted/actual draw earns
+  no +3), FT scorers **+2** per real goal / **−1** per own goal.
+- **ET portion — ONLY when the user PREDICTED an FT draw** (`predScoreA ===
+  predScoreB`; that's the signal they expected ET): exact ET **+5** (predicted ET
+  total == actual ET total), ET GD **+1** (predicted ET margin == actual ET margin —
+  a correctly-predicted **level** ET earns its own +1, *separate* from the FT-draw
+  GD), ET winner **+3** (only if actual ET decisive AND predicted ET winner side
+  matches), ET scorers **+2/−1** (ET picks against ET goals). A wrong ET winner ⇒ no
+  ET +3 and no exact ET +5, but the ET GD (if it matches) and ET scorer points are
+  kept. ET totals **include** the FT goals.
+- **Penalty portion — ONLY when the user predicted a LEVEL ET AND the match actually
+  ended ET level and went to a shoot-out** (`pen_winner_team_id` set): **+5** if the
+  predicted shoot-out winner matches the actual one, else 0 (everything else kept).
+- **Superstar (ro32):** applies on **every** ro32 match (not just round-3). For each
+  DISTINCT picked superstar across **FT + ET** scorer picks: **+3** if they scored
+  **≥ 1 real goal anywhere** in the match (FT or ET), else **−3**. Folds into total
+  only.
+- **What lands where:** only the FT components become leaderboard columns/tallies
+  (`winner_pts`/`gd_pts`/`exact_pts`/`scorer_pts`/`underdog_pts` + the count flags,
+  all FT-based). The ET points, penalty points, and superstar delta fold into
+  **`total_pts` ONLY** — they add no column and don't touch the tally counts. Any
+  `used_2x` doubling still applies on the final total. Negatives are unclamped.
+- **Data:** `matches.stage` (`'group'`|`'ro32'`), `matches.et_score_a/b` (ACTUAL ET
+  totals), `matches.pen_winner_team_id` (ACTUAL shoot-out winner). Predictions carry
+  `pred_et_a/b` and `pred_pen_winner_team_id`. Goals and scorer picks are tagged with
+  an **`is_et`** boolean (`match_goals.is_et`, `prediction_scorers.is_et`) so ET goals
+  and ET picks are distinguishable from FT ones. The admin entry + recompute live in
+  `app/admin/actions.ts` (`saveAndCompute` / `recomputeMatch`). The **user** prediction
+  inputs for ET/pen/ET-scorers live in `app/predictions/MatchCard.tsx` (the conditional
+  FT→ET→penalty flow) + `lockPrediction` (`app/predictions/actions.ts`, server-validated);
+  ro32 cards render on the **home page** (`app/page.tsx`).
 
 ---
 
@@ -204,15 +227,19 @@ Defined in `supabase/schema.sql`. Summary:
 - **teams** — `name`, `code`, `group_letter`, `flag_url`.
 - **players** — `team_id`, `name`, `position` (GK/DEF/MID/FWD), `shirt_number`.
 - **matches** — `team_a_id`, `team_b_id`, `group_letter`, `matchday`, `kickoff_at`,
-  `predictions_close_at`, `underdog_team_id`, `score_a`, `score_b`, `finished`.
-  (`team_a`/`team_b` carry **no** home/away meaning; just two slots.)
+  `predictions_close_at`, `underdog_team_id`, `score_a`, `score_b`, `finished`, plus
+  knockout fields `stage` (`'group'`|`'ro32'`, default `'group'`), `et_score_a`,
+  `et_score_b` (actual ET totals, incl. FT goals), `pen_winner_team_id` (actual
+  shoot-out winner). (`team_a`/`team_b` carry **no** home/away meaning; just two slots.)
 - **match_goals** — actual scorers, **one row per goal** (a brace = two rows):
   `match_id`, `player_id`, `minute` (text, display-only — does NOT affect scoring),
-  `is_own_goal`.
+  `is_own_goal`, `is_et` (bool, default false — true for goals scored in extra time).
 - **predictions** — `user_id`, `match_id`, `score_a`, `score_b`, `locked`,
   `locked_at`, `used_2x` (bool, default false — the 2x doubler, set true only at
-  lock; see §2.7). Unique on (`user_id`, `match_id`).
-- **prediction_scorers** — `prediction_id`, `player_id`.
+  lock; see §2.7), plus knockout `pred_et_a`, `pred_et_b`, `pred_pen_winner_team_id`
+  (null on group fixtures / when no FT draw predicted). Unique on (`user_id`, `match_id`).
+- **prediction_scorers** — `prediction_id`, `player_id`, `is_et` (bool, default false
+  — true for an ET scorer pick; FT picks are false).
 - **prediction_points** — computed per prediction: `winner_pts`, `gd_pts`,
   `exact_pts`, `scorer_pts`, `underdog_pts`, `total_pts`, plus boolean/count flags
   for the leaderboard count columns. `total_pts` is doubled when the prediction's
@@ -786,3 +813,123 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   Scorers/Underdog/Sets Won) and the gold **Total** are unchanged — Total still reflects the
   already-doubled 2x match points. `twox_used` stays in the `leaderboard` view and `predictions.used_2x`
   stays in the DB (harmless, just no longer rendered). `npm run build` clean and all 21 scoring tests pass.
+- Group-stage match list moved from home to /group-stage, reached via a new navbar hamburger menu;
+  home page is now a blank themed page (RO32 content to follow). **MOVE/routing/nav only — no
+  scoring, admin, schema, RLS, or data-logic changes; all match logic carried over verbatim.** The
+  full match experience that lived in `app/predictions/page.tsx` (paginated players/predictions/
+  points/goals queries with the 1000-row-cap fixes, round-2/round-3 derivation, `MatchCard`
+  rendering, finished collapsibles + match leaderboards, 2x/superstar/4-of-6 display, the "How
+  scoring works" box, per-user timezone display, and the reveal/RLS gating) was moved verbatim into
+  the new `app/group-stage/page.tsx` (component renamed `GroupStagePage`); only the `MatchCard`
+  import paths changed to `@/app/predictions/MatchCard` since the component files
+  (`MatchCard.tsx`, `MatchLeaderboard.tsx`, `actions.ts`) **stay** in `app/predictions/` — that
+  directory is now component-only with no `page.tsx`, so `/predictions` no longer resolves as a
+  route (deleted). It is still gated by `requireUser()` and behaves identically. `lockPrediction`'s
+  `revalidatePath("/predictions")` → `revalidatePath("/group-stage")` (the only internal route
+  reference updated). `app/page.tsx` is now a thin server component: loads the user, keeps the
+  logged-out → `/login` redirect, but **removed** the old logged-in → `/predictions` redirect —
+  signed-in users now land on a blank themed page (`<SiteHeader/>` + an empty `<main
+  className="preds-layout"/>`, the standard max-width wrapper, so RO32 content drops in cleanly).
+  **Navbar** (`app/components/SiteHeader.tsx`): added a new client component
+  `app/components/HamburgerMenu.tsx` (`"use client"`, `useState` toggle, closes on outside
+  pointer-down or link click, styled with existing tokens) rendered **alongside** the unchanged
+  logged-in links ("Hi, {name}", Leaderboard, Moments, Admin-if-admin, Log out) — the ☰ button
+  opens a small dropdown with a single "Group Stage Matches" → `/group-stage` link. Sticky navbar
+  behaviour unchanged. `npm run build` clean (route list shows `/group-stage`, no `/predictions`)
+  and all 21 scoring tests pass.
+- Moved the "How scoring works" box from /group-stage to the home page (extracted to a shared
+  ScoringRules component). **Display/layout only — no scoring, rules text, match logic, or
+  data-loading changes.** Extracted the inline `<details className="rules-banner">` rules box
+  (verbatim markup/content) from `app/group-stage/page.tsx` into a new shared server component
+  `app/components/ScoringRules.tsx` (single source of truth). The group-stage page no longer
+  renders the box (match list, "Make Predictions" heading, and everything else unchanged); the
+  home page `app/page.tsx` now renders `<ScoringRules />` inside its existing `preds-layout`
+  wrapper, so logged-in users see the identical collapsible box (same `<details open>` behaviour,
+  same design tokens) while the rest of home stays the blank themed area (RO32 content to follow).
+  Home's logged-out → `/login` gate is unchanged. `npm run build` clean and all 21 scoring tests
+  pass.
+- **Knockout (Round of 32) — scoring ENGINE + ADMIN side (user prediction inputs are a separate
+  delivery). Also REMOVED the retired 4-of-6 "Sets Won" feature.** See §2.10 (knockout scoring)
+  and §2.9 (removal note). **Manual Supabase step required:** run
+  `supabase/knockout-migration.sql` once — it adds (idempotently) the `is_et` boolean to
+  `match_goals` and `prediction_scorers` (the `stage`/`et_score_*`/`pen_winner_team_id` and
+  `pred_et_*`/`pred_pen_winner_team_id` columns + the 16 ro32 matches were already added per the
+  task prereqs; the file re-declares them with `if not exists` for completeness).
+  • **PART 0 (removal):** deleted `recomputeSetBonus()` and its call in `saveAndCompute`, deleted
+  `lib/round3sets.ts`, and removed the module-level `sign()` helper that only it used; the app no
+  longer writes `streak_bonus`. Dropped the **"Sets Won"** column from `app/leaderboard/page.tsx`
+  (kept `LeaderboardRow.sets_won` in the type since the view still returns it). The `streak_bonus`
+  table + `leaderboard.sets_won` are **left in the DB as-is** (no migration) — totals/view not
+  touched. • **PART A (engine, `lib/scoring.ts`):** added `stage` + the ro32 fields
+  (`etScoreA/B`, `penWinnerTeamId`, `predEtA/B`, `predPenWinnerTeamId`, `predictedScorerIdsEt`,
+  `actualGoalsEt`) to `ScoringInput`, and `etWinnerPts`/`etGdPts`/`etExactPts`/`etScorerPts`/
+  `penPts` to `ScoringResult` (folded into `totalPts` only — no leaderboard columns/tallies).
+  Group stage math is **unchanged** (et/pen fields ignored). For ro32: FT scoring as today; an ET
+  portion **only when the user predicted an FT draw** (exact ET +5 / ET GD +1 / ET winner +3 / ET
+  scorers ±, wrong ET winner keeps GD+scorers); a penalty +5 **only when** the user predicted a
+  level ET and the match actually went to pens; and a superstar ±3 on **every** ro32 match (scored
+  anywhere = FT or ET). Refactored scorer points into a shared `scoreScorers()` helper; FT picks
+  score against FT goals, ET picks against ET goals; the FT-based `correctScorers` tally is
+  unchanged. **`scripts/test-scoring.ts`** now threads `stage` (default `'group'`) and the ro32
+  fields, compares the new keys (defaulting missing ones to 0), and adds **8 ro32 cases** (a–g) —
+  **29 cases total, all pass**; the 21 group regressions are byte-identical in behaviour. • **PART
+  B (admin entry):** `match_goals` rows now save with `is_et`; the `[id]` page loads
+  `stage`/`et_score_*`/`pen_winner_team_id` and splits goals into FT/ET lists; **`ResultForm`**
+  (client) shows ET total inputs + an ET scorer list + two penalty-winner buttons **only** for an
+  ro32 match whose FT is a draw (decisive FT = group-style entry), validates ET total ≥ FT and
+  requires a pen winner on a level ET, with soft "goals don't add up" hints. `saveAndCompute` takes
+  a `SaveExtras` ({stage, etScoreA/B, penWinnerTeamId, etGoals}); it trusts the stored `stage`,
+  clears ET/pen when FT is decisive, persists `et_score_*`/`pen_winner_team_id`, writes FT goals
+  (`is_et=false`) + ET goals (`is_et=true`), then recomputes. `recomputeMatch` reads each
+  prediction's `pred_et_*`/`pred_pen_winner_team_id` + `prediction_scorers(player_id, is_et)`, the
+  match's stage/ET/pen actuals + split FT/ET goals, and calls the extended engine (still paging
+  predictions in 1000-row chunks; `used_2x` doubling still applied on the final total). • **PART C
+  (admin structure):** extracted the match list into `app/admin/MatchList.tsx` (server, filters by
+  `stage`); `app/admin/page.tsx` now shows the **Round of 32** with a "Group Stage Matches →" link
+  to the new **`app/admin/group-stage/page.tsx`** (the old group listing, "← Round of 32" back).
+  The `[id]` page's back link is stage-aware. Admin stays `requireAdmin`-gated and IST. • **Guard:**
+  the USER group-stage page (`app/group-stage/page.tsx`) now filters its match query to
+  `.eq("stage","group")` so the 16 newly-seeded ro32 matches don't leak into the group-stage list
+  (their user UI is the separate delivery); round-2/round-3 derivation is unaffected (still over the
+  group set). `npm run build` clean (routes show `/admin` + `/admin/group-stage`) and all **29**
+  scoring tests pass.
+- **Knockout (Round of 32) — USER prediction UI (the separate delivery from the engine/admin
+  prompt above). See §2.10.** Adds the user-facing ro32 prediction inputs + renders the Round of 32
+  on the HOME page. **No scoring-engine, admin, DB-column, or group-stage behaviour changes** — the
+  16 ro32 matches, columns (`stage`/`et_score_*`/`pen_winner_team_id`, `pred_et_*`/
+  `pred_pen_winner_team_id`, `match_goals.is_et`, `prediction_scorers.is_et`) and the engine already
+  existed. • **HOME (`app/page.tsx`)** is no longer blank for logged-in users: it renders
+  `<ScoringRules/>`, a "Round of 32" heading, and the list of `stage='ro32'` MatchCards — the SAME
+  experience as the group stage (scorer pickers, superstar ⭐ + note, lock/reveal, finished
+  collapsibles + match leaderboard, per-user timezone). The group-stage data-loading was carried
+  over **verbatim** but filtered to `.eq("stage","ro32")`, with the 1000-row chunked pagination kept
+  on players/predictions/points/goals; it additionally loads each match's `stage`/`et_score_*`/
+  `pen_winner_team_id`, every prediction's `pred_et_*`/`pred_pen_winner_team_id`, the goals' `is_et`,
+  and `prediction_scorers(player_id, is_et)` (split into FT vs ET picks via `is_et`). ro32 cards pass
+  `isRound2=false`/`isRound3=false`/`tokensUsed=0` (2x is group-round-2 only). Logged-out → `/login`
+  via `requireUser()`; `/group-stage` (stage='group') is unchanged. • **`MatchCard.tsx`** gains a
+  `stage` prop (+ actual `finalEtScoreA/B`, `penWinnerTeamId`) and, on `CardPrediction`/`RevealRow`,
+  the `predEtA/B`/`predPenWinnerTeamId`/`scorerIdsEt` fields (+ `MatchGoalRow.isEt`). Group cards are
+  byte-identical in behaviour. For an OPEN ro32 card: enter the FT score + FT scorers as today; a
+  **decisive FT** (a≠b) shows no extra inputs; an **FT draw** (a==b) reveals an "Extra time (total
+  score)" input pair (prefilled to the FT score), validated ET≥FT per team (inline "can't be lower
+  than full-time"). **ET scorers** appear only when ET adds goals over FT (cap = ET total − FT total;
+  0 added ⇒ none, with a note). A **level ET** (etA==etB) shows required "Penalty winner: TeamA /
+  TeamB" buttons (blocks lock until chosen); a decisive ET shows none. The ⭐ superstar note now also
+  shows on ANY ro32 superstar match (text: scores anywhere FT/ET). Read-only / reveal / finished
+  views show "FT a–b" + a gold "Extra time: x–y · Pens: Team" line (`KnockoutPredLine`) and FT vs ET
+  scorers labelled; the finished result bar shows the decisive outcome suffix ("AET x–y" or "Team won
+  on pens"), and the detail adds "After extra time:" / "Penalties:" lines + split FT/ET
+  `ScorersSummary`. The existing per-match leaderboard is reused (FT columns + the already-correct
+  doubled/ET-inclusive `total_pts`). • **`lockPrediction` (`app/predictions/actions.ts`)** takes an
+  optional `ro32: Ro32LockExtras` ({predEtA/B, predPenWinnerTeamId, scorerIdsEt}) and re-validates
+  it ALL server-side (never trusts the client): honoured only when the stored stage is `ro32` AND the
+  predicted FT is a draw, else forced null/empty; ET totals must be ints ≥ the FT score per team; ET
+  scorer count ≤ goals added in ET (0 added ⇒ none allowed); a level ET requires a pen winner that is
+  one of the two teams (decisive ET ⇒ pen null); all FT+ET picks must be in the two squads. It
+  persists `pred_et_a/b`/`pred_pen_winner_team_id` on the upsert and writes `prediction_scorers` with
+  the `is_et` flag (FT=false, ET=true), then locks. Group locks pass `null` and are unaffected;
+  revalidates `/group-stage` **and** `/`. • **`ScoringRules.tsx`** gains a "⚔ Knockouts (Round of
+  32)" addendum (FT draw → predict ET total; ET scorers only on added goals; level ET → pick the
+  shoot-out winner for +5; superstars score anywhere). `npm run build` clean and all **29** scoring
+  tests pass (engine untouched).

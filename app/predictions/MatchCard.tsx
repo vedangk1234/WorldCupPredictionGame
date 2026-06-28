@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { fmtTime, fmtTimeOnly } from "@/lib/format";
-import { lockPrediction } from "./actions";
+import { lockPrediction, type Ro32LockExtras } from "./actions";
 import MatchLeaderboard from "./MatchLeaderboard";
 import { buildScorerGroups } from "@/lib/scorer-options";
 
@@ -25,6 +25,11 @@ export interface CardPrediction {
   locked: boolean;
   scorerIds: number[];
   used2x: boolean;
+  // Knockout (ro32) extras — null/empty on group fixtures and decisive-FT picks.
+  predEtA: number | null;
+  predEtB: number | null;
+  predPenWinnerTeamId: number | null;
+  scorerIdsEt: number[];
 }
 
 export interface RevealRow {
@@ -36,6 +41,11 @@ export interface RevealRow {
   scorerIds: number[];
   used2x: boolean;
   isMe: boolean;
+  // Knockout (ro32) extras — null/empty on group fixtures and decisive-FT picks.
+  predEtA: number | null;
+  predEtB: number | null;
+  predPenWinnerTeamId: number | null;
+  scorerIdsEt: number[];
 }
 
 // One row of the per-match POINTS breakdown (finished matches only). These are
@@ -70,6 +80,8 @@ export interface MatchGoalRow {
   teamId: number;
   minute: string | null;
   isOwnGoal: boolean;
+  // true for a goal scored in extra time (knockouts). Group goals are false.
+  isEt: boolean;
 }
 
 interface Props {
@@ -81,11 +93,18 @@ interface Props {
   // The logged-in user's own display zone (profiles.timezone, default
   // "Asia/Kolkata"). Display only — the real lock instant is unchanged.
   userTimeZone: string;
+  // 'group' fixtures behave exactly as before; 'ro32' unlocks the knockout
+  // extra-time / penalty prediction flow (CLAUDE.md §2.10).
+  stage: "group" | "ro32";
   teamA: CardTeam;
   teamB: CardTeam;
   underdog: CardTeam | null;
   finalScoreA: number | null;
   finalScoreB: number | null;
+  // Actual knockout result (ro32, finished) — ET totals + shoot-out winner.
+  finalEtScoreA: number | null;
+  finalEtScoreB: number | null;
+  penWinnerTeamId: number | null;
   squadA: CardPlayer[];
   squadB: CardPlayer[];
   myPrediction: CardPrediction | null;
@@ -150,6 +169,7 @@ const selectStyle: React.CSSProperties = {
 export default function MatchCard(props: Props) {
   const {
     matchId,
+    stage,
     teamA,
     teamB,
     underdog,
@@ -168,6 +188,7 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
+  const isRo32 = stage === "ro32";
 
   // 2x eligibility (CLAUDE.md "2x tokens"): round-2 AND no underdog. A round-2
   // match WITH an underdog shows an explanatory note instead of the toggle;
@@ -175,12 +196,12 @@ export default function MatchCard(props: Props) {
   const twoxEligible = isRound2 && !underdog;
   const TOKENS_MAX = 3;
 
-  // Superstar note: shown only on a round-3 match where at least one of the two
-  // squads contains a flagged superstar. Display only — the +3/−3 bonus math is
-  // applied server-side and is unchanged.
+  // Superstar note: shown on a group round-3 match OR ANY ro32 match where at
+  // least one of the two squads contains a flagged superstar. Display only — the
+  // +3/−3 bonus math is applied server-side and is unchanged.
   const hasSuperstar =
     squadA.some((p) => p.is_superstar) || squadB.some((p) => p.is_superstar);
-  const showSuperstarNote = isRound3 && hasSuperstar;
+  const showSuperstarNote = (isRound3 || isRo32) && hasSuperstar;
 
   const [scoreA, setScoreA] = useState(
     myPrediction ? String(myPrediction.scoreA) : "",
@@ -190,6 +211,20 @@ export default function MatchCard(props: Props) {
   );
   const [scorers, setScorers] = useState<ScorerRow[]>(
     (myPrediction?.scorerIds ?? []).map((playerId) => ({ uid: uidSeq++, playerId })),
+  );
+  // Knockout extra-time state (ro32 only). ET totals + ET scorer picks + the
+  // predicted shoot-out winner. Prefilled from an existing (locked) prediction.
+  const [etScoreA, setEtScoreA] = useState(
+    myPrediction?.predEtA != null ? String(myPrediction.predEtA) : "",
+  );
+  const [etScoreB, setEtScoreB] = useState(
+    myPrediction?.predEtB != null ? String(myPrediction.predEtB) : "",
+  );
+  const [etScorers, setEtScorers] = useState<ScorerRow[]>(
+    (myPrediction?.scorerIdsEt ?? []).map((playerId) => ({ uid: uidSeq++, playerId })),
+  );
+  const [penWinner, setPenWinner] = useState<number | null>(
+    myPrediction?.predPenWinnerTeamId ?? null,
   );
   const [trimNote, setTrimNote] = useState<string | null>(null);
   // 2x doubler choice — opt-in, defaults to NO, only ever sent at lock time.
@@ -237,6 +272,30 @@ export default function MatchCard(props: Props) {
     numB >= 0;
   const cap = validScores ? numA + numB : 0;
 
+  // ---- Knockout (ro32) extra-time derivation -------------------------------
+  // ET inputs only appear when this is an ro32 match whose PREDICTED FT is a
+  // draw (the signal the user expects extra time). All of this is display logic;
+  // the lock action re-validates everything server-side.
+  const predFtDraw = validScores && numA === numB;
+  const showEt = isRo32 && predFtDraw;
+  const numEtA = etScoreA === "" ? 0 : Number(etScoreA);
+  const numEtB = etScoreB === "" ? 0 : Number(etScoreB);
+  const etFilled =
+    etScoreA !== "" &&
+    etScoreB !== "" &&
+    Number.isInteger(numEtA) &&
+    Number.isInteger(numEtB) &&
+    numEtA >= 0 &&
+    numEtB >= 0;
+  // ET total can't be below FT (ET includes the FT goals).
+  const etBelowFt = etFilled && (numEtA < numA || numEtB < numB);
+  const etDraw = showEt && etFilled && !etBelowFt && numEtA === numEtB;
+  const showPen = etDraw;
+  // ET scorer cap = goals ADDED in extra time (ET total − FT total). 0 ⇒ none.
+  const etAddedCap =
+    showEt && etFilled && !etBelowFt ? numEtA + numEtB - (numA + numB) : 0;
+  const etScorersAllowed = etAddedCap > 0;
+
   // If lowering a score makes picks exceed the new cap, trim the extras. Guarded
   // on length so this only fires when the cap actually shrinks past the picks;
   // addScorer never exceeds the cap, so `scorers` need not be an effect dep.
@@ -249,6 +308,24 @@ export default function MatchCard(props: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cap]);
+
+  // Prefill the ET total to the FT score when the FT draw first reveals the ET
+  // inputs (only while both are still blank — never clobber a user's edit).
+  useEffect(() => {
+    if (showEt && etScoreA === "" && etScoreB === "") {
+      setEtScoreA(String(numA));
+      setEtScoreB(String(numB));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEt]);
+
+  // Trim ET scorer picks down to the goals added in ET (or to 0 if none added).
+  useEffect(() => {
+    if (etScorers.length > etAddedCap) {
+      setEtScorers((rows) => rows.slice(0, etAddedCap));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etAddedCap]);
 
   function addScorer() {
     setTrimNote(null);
@@ -270,6 +347,51 @@ export default function MatchCard(props: Props) {
     );
   }
 
+  function addEtScorer() {
+    setEtScorers((rows) =>
+      rows.length >= etAddedCap ? rows : [...rows, { uid: uidSeq++, playerId: 0 }],
+    );
+  }
+  function removeEtScorer(uid: number) {
+    setEtScorers((rows) => rows.filter((r) => r.uid !== uid));
+  }
+  function setEtScorerPlayer(uid: number, playerId: number) {
+    setEtScorers((rows) => rows.map((r) => (r.uid === uid ? { ...r, playerId } : r)));
+  }
+  function cleanEtPicks(): number[] {
+    return Array.from(
+      new Set(etScorers.map((r) => r.playerId).filter((id) => id !== 0)),
+    );
+  }
+
+  // Build the knockout extras to send (and surface client-side blockers early).
+  // Returns the extras (or null for group / decisive FT), or false if invalid.
+  function buildRo32(): Ro32LockExtras | null | false {
+    if (!isRo32 || !predFtDraw) return null;
+    if (!etFilled) {
+      setMsg({ ok: false, text: "Enter the extra-time total score." });
+      return false;
+    }
+    if (etBelowFt) {
+      setMsg({ ok: false, text: "Extra-time total can't be lower than full-time." });
+      return false;
+    }
+    let pen: number | null = null;
+    if (numEtA === numEtB) {
+      if (penWinner !== teamA.id && penWinner !== teamB.id) {
+        setMsg({ ok: false, text: "Extra time is level — pick the penalty shoot-out winner." });
+        return false;
+      }
+      pen = penWinner;
+    }
+    return {
+      predEtA: numEtA,
+      predEtB: numEtB,
+      predPenWinnerTeamId: pen,
+      scorerIdsEt: etScorersAllowed ? cleanEtPicks() : [],
+    };
+  }
+
   function doLock() {
     setMsg(null);
     if (!validScores) {
@@ -277,10 +399,15 @@ export default function MatchCard(props: Props) {
       setMsg({ ok: false, text: "Enter both scores as whole numbers (0 or more)." });
       return;
     }
+    const ro32 = buildRo32();
+    if (ro32 === false) {
+      setConfirmingLock(false);
+      return;
+    }
     // Only send 2x when this match is eligible — guards against a stale toggle.
     const send2x = twoxEligible && use2x;
     startTransition(async () => {
-      const res = await lockPrediction(matchId, numA, numB, cleanPicks(), send2x);
+      const res = await lockPrediction(matchId, numA, numB, cleanPicks(), send2x, ro32);
       setConfirmingLock(false);
       setMsg({ ok: res.ok, text: res.message });
     });
@@ -294,6 +421,23 @@ export default function MatchCard(props: Props) {
   // Open/Locked/Closed cards are untouched (the main return below).
   if (state === "finished") {
     const hasScore = props.finalScoreA !== null && props.finalScoreB !== null;
+    // Knockout actuals: whether ET was played, and the shoot-out winner (if any).
+    const etPlayed =
+      isRo32 && props.finalEtScoreA !== null && props.finalEtScoreB !== null;
+    const penTeam =
+      props.penWinnerTeamId === teamA.id
+        ? teamA
+        : props.penWinnerTeamId === teamB.id
+          ? teamB
+          : null;
+    // The decisive-outcome suffix shown on the collapsed result bar.
+    const knockoutOutcome = etPlayed
+      ? penTeam
+        ? `${flag(penTeam)}${penTeam.name} won on pens`
+        : `AET ${props.finalEtScoreA}–${props.finalEtScoreB}`
+      : null;
+    const ftGoals = goals.filter((g) => !g.isEt);
+    const etGoals = goals.filter((g) => g.isEt);
     return (
       <div style={{ ...card, padding: 14, opacity: 0.74 }}>
         {/* Result bar — collapsed by default; tap to reveal the full detail. */}
@@ -341,6 +485,11 @@ export default function MatchCard(props: Props) {
               {flag(teamB)}
               {teamB.name}
             </span>
+            {knockoutOutcome && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--chalk-dim)" }}>
+                · {knockoutOutcome}
+              </span>
+            )}
           </span>
           <StateBadge state={state} isNextOpen={isNextOpen} />
         </button>
@@ -358,8 +507,8 @@ export default function MatchCard(props: Props) {
               }}
             >
               <span>
-                Group {props.groupLetter ?? "—"}
-                {props.matchday ? ` · MD ${props.matchday}` : ""}
+                {isRo32 ? "Round of 32" : `Group ${props.groupLetter ?? "—"}`}
+                {!isRo32 && props.matchday ? ` · MD ${props.matchday}` : ""}
               </span>
               <span>Kickoff {fmtTime(props.kickoffAt, props.userTimeZone)}</span>
               <span>Closes {fmtTimeOnly(props.closeAt, props.userTimeZone)}</span>
@@ -379,7 +528,31 @@ export default function MatchCard(props: Props) {
               </div>
             )}
 
-            <ScorersSummary goals={goals} teamA={teamA} teamB={teamB} />
+            {etPlayed && (
+              <div
+                className="display"
+                style={{ marginTop: 4, fontSize: 14.5, color: "var(--gold-300)", fontWeight: 800 }}
+              >
+                After extra time: {teamA.name} {props.finalEtScoreA}–{props.finalEtScoreB} {teamB.name}
+              </div>
+            )}
+            {etPlayed && penTeam && (
+              <div style={{ marginTop: 4, fontSize: 13.5, color: "var(--gold-300)", fontWeight: 700 }}>
+                Penalties: {flag(penTeam)}
+                {penTeam.name} won the shoot-out
+              </div>
+            )}
+
+            {isRo32 ? (
+              <>
+                <ScorersSummary goals={ftGoals} teamA={teamA} teamB={teamB} title="Full-time scorers" />
+                {etGoals.length > 0 && (
+                  <ScorersSummary goals={etGoals} teamA={teamA} teamB={teamB} title="Extra-time scorers" />
+                )}
+              </>
+            ) : (
+              <ScorersSummary goals={goals} teamA={teamA} teamB={teamB} />
+            )}
 
             {underdog && (
               <div
@@ -634,7 +807,186 @@ export default function MatchCard(props: Props) {
             )}
           </div>
 
-          {/* Superstar note — round-3 matches featuring a superstar team only. */}
+          {/* Knockout extra-time block — only on an ro32 match with a drawn FT. */}
+          {showEt && (
+            <div
+              style={{
+                marginTop: 18,
+                background: "var(--pitch-950)",
+                border: "1px solid var(--pitch-line)",
+                borderRadius: 10,
+                padding: "14px 14px",
+              }}
+            >
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>
+                ⚔ Extra time (predicted total score)
+              </h3>
+              <p style={{ color: "var(--chalk-dim)", fontSize: 12, margin: "4px 0 12px" }}>
+                You predicted a draw — the tie goes to extra time. Enter the{" "}
+                <strong>total</strong> score after ET (it includes your full-time goals).
+              </p>
+
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {flag(teamA)}
+                    {teamA.name}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={etScoreA}
+                    onChange={(e) => setEtScoreA(e.target.value)}
+                    style={numInput}
+                  />
+                </label>
+                <span className="display" style={{ fontSize: 20, color: "var(--chalk-dim)", paddingBottom: 8 }}>
+                  –
+                </span>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {flag(teamB)}
+                    {teamB.name}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={etScoreB}
+                    onChange={(e) => setEtScoreB(e.target.value)}
+                    style={numInput}
+                  />
+                </label>
+              </div>
+
+              {etBelowFt && (
+                <p style={{ color: "var(--m3)", fontSize: 12.5, margin: "10px 0 0", fontWeight: 600 }}>
+                  Extra-time total can&apos;t be lower than full-time.
+                </p>
+              )}
+
+              {/* ET scorers — only when ET adds goals over the FT score. */}
+              {etScorersAllowed && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                    <h4 style={{ fontSize: 13.5, fontWeight: 700, margin: 0 }}>Extra-time scorers</h4>
+                    <span style={{ fontSize: 12, color: "var(--chalk-dim)" }}>
+                      {etScorers.length}/{etAddedCap} (optional)
+                    </span>
+                  </div>
+                  <p style={{ color: "var(--chalk-dim)", fontSize: 12, margin: "4px 0 10px" }}>
+                    Name up to the goals you added in extra time. Each correct pick = +2 per ET goal.
+                  </p>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {etScorers.map((row) => (
+                      <div key={row.uid} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <select
+                          value={row.playerId}
+                          onChange={(e) => setEtScorerPlayer(row.uid, Number(e.target.value))}
+                          style={selectStyle}
+                        >
+                          <option value={0}>— select scorer —</option>
+                          {scorerGroups.map((g) => (
+                            <optgroup key={g.label} label={g.label}>
+                              {g.options.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => removeEtScorer(row.uid)}
+                          aria-label="Remove extra-time scorer"
+                          style={{
+                            background: "transparent",
+                            border: "1px solid var(--pitch-line)",
+                            color: "var(--chalk-dim)",
+                            borderRadius: 8,
+                            width: 32,
+                            height: 32,
+                            cursor: "pointer",
+                            fontSize: 16,
+                            lineHeight: 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addEtScorer}
+                    disabled={etScorers.length >= etAddedCap}
+                    style={{
+                      marginTop: etScorers.length > 0 ? 10 : 0,
+                      background: "transparent",
+                      border: "1px dashed var(--pitch-line)",
+                      color: "var(--chalk)",
+                      borderRadius: 9,
+                      padding: "8px 14px",
+                      cursor: etScorers.length >= etAddedCap ? "default" : "pointer",
+                      opacity: etScorers.length >= etAddedCap ? 0.45 : 1,
+                      fontSize: 13.5,
+                    }}
+                  >
+                    + Add extra-time scorer
+                  </button>
+                </div>
+              )}
+              {etFilled && !etBelowFt && !etScorersAllowed && (
+                <p style={{ color: "var(--chalk-dim)", fontSize: 12, margin: "12px 0 0", opacity: 0.8 }}>
+                  No goals added in extra time — no extra-time scorers to name.
+                </p>
+              )}
+
+              {/* Penalty shoot-out winner — required when ET is level. */}
+              {showPen && (
+                <div style={{ marginTop: 16 }}>
+                  <h4 style={{ fontSize: 13.5, fontWeight: 700, margin: "0 0 4px" }}>
+                    Penalty shoot-out winner
+                  </h4>
+                  <p style={{ color: "var(--chalk-dim)", fontSize: 12, margin: "0 0 10px" }}>
+                    Extra time is level — pick who wins on penalties (+5 if correct). Required to lock.
+                  </p>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {[teamA, teamB].map((t) => {
+                      const active = penWinner === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setPenWinner(t.id)}
+                          style={{
+                            background: active ? "var(--gold-400)" : "transparent",
+                            color: active ? "#1a1206" : "var(--chalk)",
+                            border: `1px solid ${active ? "var(--gold-400)" : "var(--pitch-line)"}`,
+                            borderRadius: 9,
+                            padding: "9px 16px",
+                            fontWeight: 700,
+                            fontSize: 13.5,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {flag(t)}
+                          {t.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Superstar note — round-3 OR ro32 matches featuring a superstar team. */}
           {showSuperstarNote && (
             <div
               style={{
@@ -649,8 +1001,9 @@ export default function MatchCard(props: Props) {
               }}
             >
               ⭐ <strong>Superstar match:</strong> pick a starred player to score and you get{" "}
-              <strong>+3</strong> if they score (on top of normal points) — but{" "}
-              <strong>−3</strong> if they don&apos;t. Choose wisely.
+              <strong>+3</strong> if they score{" "}
+              {isRo32 ? "anywhere in the match (full-time or extra time)" : ""} (on top of normal
+              points) — but <strong>−3</strong> if they don&apos;t. Choose wisely.
             </div>
           )}
 
@@ -752,6 +1105,8 @@ export default function MatchCard(props: Props) {
                       setMsg({ ok: false, text: "Enter both scores first." });
                       return;
                     }
+                    // Surface any knockout ET / penalty blockers before confirming.
+                    if (buildRo32() === false) return;
                     setConfirmingLock(true);
                   }}
                   disabled={pending}
@@ -815,7 +1170,26 @@ export default function MatchCard(props: Props) {
               <div className="display" style={{ fontSize: 18, fontWeight: 800 }}>
                 {teamA.name} {myPrediction.scoreA}–{myPrediction.scoreB} {teamB.name}
               </div>
-              <ScorerLine ids={myPrediction.scorerIds} playerName={playerName} superstarIds={superstarIds} />
+              <ScorerLine
+                ids={myPrediction.scorerIds}
+                playerName={playerName}
+                superstarIds={superstarIds}
+                label={isRo32 && myPrediction.predEtA != null ? "Full-time scorers" : "Scorers"}
+              />
+              <KnockoutPredLine
+                predEtA={myPrediction.predEtA}
+                predEtB={myPrediction.predEtB}
+                predPenWinnerTeamId={myPrediction.predPenWinnerTeamId}
+                teamA={teamA}
+                teamB={teamB}
+              />
+              <ScorerLine
+                ids={myPrediction.scorerIdsEt}
+                playerName={playerName}
+                superstarIds={superstarIds}
+                label="Extra-time scorers"
+                hideWhenEmpty
+              />
               <TwoXIndicator
                 used2x={myPrediction.used2x}
                 show={myPrediction.used2x || twoxEligible}
@@ -866,14 +1240,22 @@ function ScorersSummary({
   goals,
   teamA,
   teamB,
+  title,
 }: {
   goals: MatchGoalRow[];
   teamA: CardTeam;
   teamB: CardTeam;
+  title?: string;
 }) {
+  const heading = title ? (
+    <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--chalk-dim)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+      {title}
+    </div>
+  ) : null;
   if (goals.length === 0) {
     return (
       <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--chalk-dim)" }}>
+        {heading}
         No scorers recorded.
       </div>
     );
@@ -926,6 +1308,7 @@ function ScorersSummary({
         fontSize: 12.5,
       }}
     >
+      {heading}
       {render(teamA)}
       {render(teamB)}
     </div>
@@ -936,12 +1319,17 @@ function ScorerLine({
   ids,
   playerName,
   superstarIds,
+  label = "Scorers",
+  hideWhenEmpty = false,
 }: {
   ids: number[];
   playerName: Map<number, string>;
   superstarIds?: Set<number>;
+  label?: string;
+  hideWhenEmpty?: boolean;
 }) {
   if (ids.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
       <div style={{ fontSize: 12.5, color: "var(--chalk-dim)", marginTop: 4, opacity: 0.8 }}>
         No scorers backed.
@@ -950,13 +1338,53 @@ function ScorerLine({
   }
   return (
     <div style={{ fontSize: 12.5, color: "var(--chalk-dim)", marginTop: 4 }}>
-      Scorers:{" "}
+      {label}:{" "}
       {ids
         .map(
           (id) =>
             `${superstarIds?.has(id) ? "⭐ " : ""}${playerName.get(id) ?? `#${id}`}`,
         )
         .join(", ")}
+    </div>
+  );
+}
+
+// A muted secondary line summarising a knockout prediction's extra-time total +
+// predicted shoot-out winner. Renders nothing when no ET was predicted (decisive
+// FT or a group fixture).
+function KnockoutPredLine({
+  predEtA,
+  predEtB,
+  predPenWinnerTeamId,
+  teamA,
+  teamB,
+}: {
+  predEtA: number | null;
+  predEtB: number | null;
+  predPenWinnerTeamId: number | null;
+  teamA: CardTeam;
+  teamB: CardTeam;
+}) {
+  if (predEtA == null || predEtB == null) return null;
+  const penTeam =
+    predPenWinnerTeamId === teamA.id
+      ? teamA
+      : predPenWinnerTeamId === teamB.id
+        ? teamB
+        : null;
+  return (
+    <div style={{ fontSize: 12.5, color: "var(--gold-300)", marginTop: 4 }}>
+      Extra time:{" "}
+      <span className="tnum" style={{ fontWeight: 700 }}>
+        {predEtA}–{predEtB}
+      </span>
+      {penTeam ? (
+        <>
+          {" · Pens: "}
+          {flag(penTeam)}
+          {penTeam.name}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1011,7 +1439,21 @@ function RevealSection({
               </div>
               {r.scorerIds.length > 0 && (
                 <div style={{ fontSize: 12, color: "var(--chalk-dim)", marginTop: 4 }}>
-                  Scorers: {r.scorerIds.map((id) => playerName.get(id) ?? `#${id}`).join(", ")}
+                  {r.predEtA != null ? "Full-time scorers" : "Scorers"}:{" "}
+                  {r.scorerIds.map((id) => playerName.get(id) ?? `#${id}`).join(", ")}
+                </div>
+              )}
+              <KnockoutPredLine
+                predEtA={r.predEtA}
+                predEtB={r.predEtB}
+                predPenWinnerTeamId={r.predPenWinnerTeamId}
+                teamA={teamA}
+                teamB={teamB}
+              />
+              {r.scorerIdsEt.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--chalk-dim)", marginTop: 4 }}>
+                  Extra-time scorers:{" "}
+                  {r.scorerIdsEt.map((id) => playerName.get(id) ?? `#${id}`).join(", ")}
                 </div>
               )}
             </div>

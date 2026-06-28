@@ -29,6 +29,12 @@ export interface Player {
   shirt_number: number | null;
 }
 
+// `stage` distinguishes group-stage fixtures ('group') from knockouts ('ro32').
+// For a knockout, et_score_a/b hold the ACTUAL extra-time totals (include the FT
+// goals) and pen_winner_team_id the ACTUAL shoot-out winner — both null until a
+// drawn FT goes to ET / pens. See CLAUDE.md §knockout-scoring.
+export type Stage = "group" | "ro32";
+
 export interface Match {
   id: number;
   team_a_id: number;
@@ -41,6 +47,10 @@ export interface Match {
   score_a: number | null;
   score_b: number | null;
   finished: boolean;
+  stage: Stage;
+  et_score_a: number | null;
+  et_score_b: number | null;
+  pen_winner_team_id: number | null;
 }
 
 export interface MatchGoal {
@@ -49,6 +59,8 @@ export interface MatchGoal {
   player_id: number;
   minute: string | null;
   is_own_goal: boolean;
+  // true for goals scored in extra time (knockouts). Group goals are always false.
+  is_et: boolean;
 }
 
 export interface Prediction {
@@ -62,12 +74,19 @@ export interface Prediction {
   // "2x" doubler — opt-in, chosen at lock time only, permanent once locked.
   // Doubles total_pts for this match (CLAUDE.md "2x tokens").
   used_2x: boolean;
+  // Knockout-only predictions: extra-time totals + predicted shoot-out winner.
+  // null on group fixtures and when the user didn't predict an FT draw.
+  pred_et_a: number | null;
+  pred_et_b: number | null;
+  pred_pen_winner_team_id: number | null;
 }
 
 export interface PredictionScorer {
   id: number;
   prediction_id: number;
   player_id: number;
+  // true for an ET scorer pick (knockouts). FT picks are false.
+  is_et: boolean;
 }
 
 export interface PredictionPoints {

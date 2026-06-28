@@ -8,8 +8,25 @@ type Goal = { playerId: number; isOwnGoal: boolean };
 const n = (playerId: number): Goal => ({ playerId, isOwnGoal: false });
 const og = (playerId: number): Goal => ({ playerId, isOwnGoal: true });
 
+interface Expect {
+  winnerPts?: number;
+  gdPts?: number;
+  exactPts?: number;
+  scorerPts?: number;
+  underdogPts?: number;
+  superstarPts?: number;
+  etWinnerPts?: number;
+  etGdPts?: number;
+  etExactPts?: number;
+  etScorerPts?: number;
+  penPts?: number;
+  totalPts: number;
+  correctScorers?: number;
+}
+
 interface Case {
   num: number;
+  stage?: 'group' | 'ro32'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -17,19 +34,19 @@ interface Case {
   underdog: number | null;
   isRound3?: boolean; // default false
   superstars?: number[]; // default []
-  expect: {
-    winnerPts: number;
-    gdPts: number;
-    exactPts: number;
-    scorerPts: number;
-    underdogPts: number;
-    superstarPts: number;
-    totalPts: number;
-    correctScorers: number;
-  };
+  // ro32-only fields
+  predEt?: [number, number];
+  etActual?: [number, number];
+  penWinner?: number | null; // actual pen winner team id
+  predPen?: number | null; // predicted pen winner team id
+  etGoals?: Goal[];
+  etPicks?: number[];
+  expect: Expect;
 }
 
+// teamAId = 1, teamBId = 2 throughout.
 const cases: Case[] = [
+  // ===================== Group stage (regression) =====================
   { num: 1, pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
   { num: 2, pred: [3, 2], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 0 } },
   { num: 3, pred: [3, 1], actual: [2, 1], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
@@ -47,23 +64,78 @@ const cases: Case[] = [
   { num: 15, pred: [1, 2], actual: [1, 2], goals: [], picks: [], underdog: null, expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, underdogPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
   { num: 16, pred: [0, 1], actual: [1, 2], goals: [], picks: [], underdog: 2, expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, underdogPts: 5, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
 
-  // --- Superstar bonus (round-3 only). Player 35 = a flagged superstar. ---
-  // Round-3, picked superstar scores a brace: 3 + 5 + 1 + (2*2) + 3 = 16.
+  // --- Superstar bonus (group-stage round-3 only). Player 35 = a flagged superstar. ---
   { num: 17, pred: [2, 1], actual: [2, 1], goals: [n(35), n(35), n(201)], picks: [35], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, superstarPts: 3, totalPts: 16, correctScorers: 1 } },
-  // Round-3, picked superstar no goal + a normal scorer who scored: 3 + 5 + 1 + 2 − 3 = 8.
   { num: 18, pred: [2, 1], actual: [2, 1], goals: [n(201), n(902), n(903)], picks: [35, 201], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 2, underdogPts: 0, superstarPts: -3, totalPts: 8, correctScorers: 1 } },
-  // Round-3, picked superstar scores ONLY an own goal → −3 superstar netted with −1 normal OG.
   { num: 19, pred: [0, 0], actual: [1, 0], goals: [og(35)], picks: [35], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: -1, underdogPts: 0, superstarPts: -3, totalPts: -4, correctScorers: 0 } },
-  // Round-3, superstar exists & scores but was NOT picked → no superstar delta.
   { num: 20, pred: [2, 1], actual: [2, 1], goals: [n(35), n(201), n(900)], picks: [201], underdog: null, isRound3: true, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 2, underdogPts: 0, superstarPts: 0, totalPts: 11, correctScorers: 1 } },
-  // NOT round-3: picked superstar scores a brace → superstar bonus must NOT leak.
   { num: 21, pred: [2, 1], actual: [2, 1], goals: [n(35), n(35), n(900)], picks: [35], underdog: null, isRound3: false, superstars: [35], expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 4, underdogPts: 0, superstarPts: 0, totalPts: 13, correctScorers: 1 } },
+
+  // ===================== Knockout (ro32) =====================
+  // a) Decisive FT 2–1 vs actual 2–1 → +3 +5 +1, no ET (pred wasn't an FT draw).
+  { num: 22, stage: 'ro32', pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [0, 0],
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
+
+  // b) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  { num: 23, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+
+  // c) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → FT GD+1, exact FT+5, ET GD+1, exact ET+5, pens+5 = 17.
+  { num: 24, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 2], etActual: [2, 2], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+
+  // d) pred 1–1 → 1–1 → pens Arg(1), actual 1–1 / 1–1 / Arg → FT+5+1, ET+5+1, pens+5 = 17 (no ET scorers).
+  { num: 25, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+
+  // e) ET winner WRONG (pred 1–1 → 2–1 ET, actual 1–1 / 1–2 ET) → no ET +3/+5, no ET GD (margins differ),
+  //    keep FT pts (0+1+5) + ET scorer (player 700 scored a real ET goal → +2) = 8.
+  { num: 26, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 8, correctScorers: 0 } },
+
+  // f1) Superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
+  //     pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1. FT all wrong → 0; superstar +3.
+  { num: 27, stage: 'ro32', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
+    superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(35)],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 3, correctScorers: 0 } },
+
+  // f2) Superstar (player 35) picked as FT scorer, NEVER scores anywhere → −3.
+  { num: 28, stage: 'ro32', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
+    superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(900)],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: -3, totalPts: -3, correctScorers: 0 } },
+
+  // g) Group-stage match with et/pen fields present but must be IGNORED → identical to today.
+  { num: 29, stage: 'group', pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null,
+    predEt: [5, 0], etActual: [5, 0], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
 ];
 
 let failures = 0;
 
+const CHECK_KEYS: (keyof Expect)[] = [
+  'winnerPts',
+  'gdPts',
+  'exactPts',
+  'scorerPts',
+  'underdogPts',
+  'superstarPts',
+  'etWinnerPts',
+  'etGdPts',
+  'etExactPts',
+  'etScorerPts',
+  'penPts',
+  'totalPts',
+  'correctScorers',
+];
+
 for (const c of cases) {
   const input: ScoringInput = {
+    stage: c.stage ?? 'group',
     predScoreA: c.pred[0],
     predScoreB: c.pred[1],
     predictedScorerIds: c.picks,
@@ -75,24 +147,21 @@ for (const c of cases) {
     underdogTeamId: c.underdog,
     isRound3: c.isRound3 ?? false,
     superstarPlayerIds: c.superstars ?? [],
+    etScoreA: c.etActual?.[0],
+    etScoreB: c.etActual?.[1],
+    penWinnerTeamId: c.penWinner ?? null,
+    predEtA: c.predEt?.[0],
+    predEtB: c.predEt?.[1],
+    predPenWinnerTeamId: c.predPen ?? null,
+    predictedScorerIdsEt: c.etPicks ?? [],
+    actualGoalsEt: c.etGoals ?? [],
   };
 
   const got = scorePrediction(input);
 
-  const checks: (keyof Case['expect'])[] = [
-    'winnerPts',
-    'gdPts',
-    'exactPts',
-    'scorerPts',
-    'underdogPts',
-    'superstarPts',
-    'totalPts',
-    'correctScorers',
-  ];
-
   const diffs: string[] = [];
-  for (const key of checks) {
-    const expected = c.expect[key];
+  for (const key of CHECK_KEYS) {
+    const expected = c.expect[key] ?? 0;
     const actual = (got as unknown as Record<string, number>)[key];
     if (actual !== expected) {
       diffs.push(`${key}: expected ${expected}, got ${actual}`);

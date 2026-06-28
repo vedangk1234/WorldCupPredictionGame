@@ -99,9 +99,17 @@ create table public.matches (
   kickoff_at            timestamptz not null,           -- stored UTC, shown IST
   predictions_close_at  timestamptz not null,           -- default kickoff - 5 min
   underdog_team_id      bigint references public.teams(id),  -- null = no underdog
-  score_a               int,                            -- null until finished
+  score_a               int,                            -- FT score; null until finished
   score_b               int,
   finished              boolean not null default false,
+  -- Knockout (Round-of-32) fields. stage 'group' = group fixture, 'ro32' = RO32.
+  -- et_score_* are the ACTUAL extra-time totals (include the FT goals); null
+  -- unless a drawn FT went to ET. pen_winner_team_id is set only when ET ended
+  -- level and the tie was decided on penalties. See CLAUDE.md §knockout-scoring.
+  stage                 text not null default 'group',
+  et_score_a            int,
+  et_score_b            int,
+  pen_winner_team_id    bigint references public.teams(id),
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
   check (team_a_id <> team_b_id),
@@ -124,6 +132,7 @@ create table public.match_goals (
   player_id    bigint not null references public.players(id),
   minute       text,                       -- e.g. '23', '45+2', '90+4'
   is_own_goal  boolean not null default false,
+  is_et        boolean not null default false,  -- true = scored in extra time (knockouts)
   created_at   timestamptz not null default now()
 );
 create index match_goals_match_idx on public.match_goals(match_id);
@@ -139,6 +148,13 @@ create table public.predictions (
   score_b     int not null check (score_b >= 0),
   locked      boolean not null default false,
   locked_at   timestamptz,
+  -- "2x" doubler (group-stage round-2 feature); permanent once locked.
+  used_2x     boolean not null default false,
+  -- Knockout-only: predicted ET totals + shoot-out winner (null on group
+  -- fixtures and when the user did not predict an FT draw).
+  pred_et_a               int,
+  pred_et_b               int,
+  pred_pen_winner_team_id bigint references public.teams(id),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   unique (user_id, match_id)
@@ -171,6 +187,7 @@ create table public.prediction_scorers (
   id             bigint generated always as identity primary key,
   prediction_id  bigint not null references public.predictions(id) on delete cascade,
   player_id      bigint not null references public.players(id),
+  is_et          boolean not null default false,  -- true = an ET scorer pick (knockouts)
   unique (prediction_id, player_id)
 );
 

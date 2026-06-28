@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/auth-actions";
+import HamburgerMenu from "@/app/components/HamburgerMenu";
 
 // Server component. Reads the current user from the auth cookie; if logged in,
 // loads their profile (name + is_admin) to decide what the right side shows.
@@ -102,6 +103,7 @@ export default async function SiteHeader() {
                   Log out
                 </button>
               </form>
+              <HamburgerMenu />
             </>
           ) : (
             <>
