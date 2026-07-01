@@ -252,7 +252,10 @@ Defined in `supabase/schema.sql`. Summary:
   lock; see §2.7), plus knockout `pred_et_a`, `pred_et_b`, `pred_pen_winner_team_id`
   (null on group fixtures / when no FT draw predicted). Unique on (`user_id`, `match_id`).
 - **prediction_scorers** — `prediction_id`, `player_id`, `is_et` (bool, default false
-  — true for an ET scorer pick; FT picks are false).
+  — true for an ET scorer pick; FT picks are false). Unique on
+  (`prediction_id`, `player_id`, `is_et`) — the same player may be picked once for
+  FT (is_et=false) AND once for ET (is_et=true) on one prediction; duplicates
+  within a phase are still rejected.
 - **prediction_points** — computed per prediction: `winner_pts`, `gd_pts`,
   `exact_pts`, `scorer_pts`, `underdog_pts`, `total_pts`, plus boolean/count flags
   for the leaderboard count columns. `total_pts` is doubled when the prediction's
@@ -970,3 +973,43 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   (wrong pen winner) updated to the new rule (their FT/ET exacts now drop to 0); added **case 31**
   (exact FT predicted but wrong ET winner → exacts zeroed, only FT GD + scorer kept). Now **31 cases,
   all pass**. `npm run build` clean.
+- **Same player may now be picked in both FT and ET scorer lists; scoring is phase-strict (each
+  pick pays only for goals in its own phase; no double-count off one goal).** The only real
+  blocker was the DB: `prediction_scorers` had `unique (prediction_id, player_id)`, which rejected
+  a player appearing once as an FT pick (`is_et=false`) and once as an ET pick (`is_et=true`) on
+  the same prediction. **Manual Supabase step:** re-run `supabase/knockout-migration.sql` (now
+  idempotently drops that constraint and creates a `unique index … (prediction_id, player_id,
+  is_et)` in its place); `supabase/schema.sql` updated to the 3-column unique to match. The rest
+  of the stack already supported this and was left unchanged: the **UI** (`MatchCard.tsx`) FT and
+  ET scorer pickers each render the full squad list with fully separate `scorers`/`etScorers`
+  state and separate `cleanPicks()`/`cleanEtPicks()` dedupe (dedupe is within a list only — never
+  across the two, so a player chosen for FT is still selectable for ET and vice-versa; caps
+  unchanged: FT ≤ FT goals, ET ≤ ET-added goals); the **server** (`lockPrediction`/
+  `writePrediction`) already deduped FT (`uniqueScorerIds`) and ET (`etScorerIds`) independently
+  and inserted `(pid,is_et=false)` + `(pid,is_et=true)` as two rows (the union set is used only
+  for squad validation); and the **engine** (`lib/scoring.ts`) was already phase-strict — FT picks
+  score against FT goals and ET picks against ET goals via two independent `scoreScorers()` calls,
+  so a single goal never pays twice (superstar ±3 still counts a picked superstar once, scored
+  anywhere). **Tests** (`scripts/test-scoring.ts`): added **4 cases (32–35)** proving it — player
+  in BOTH phases scoring 1 FT + 1 ET goal → +4; in BOTH but scoring only an FT goal → +2 (ET pick
+  pays 0, NOT +4); FT-only pick scoring only in ET → 0; ET-only pick scoring in ET → +2. Now **35
+  cases, all pass**; `npm run build` clean.
+- **Navbar fixes: sticky verified, hamburger moved to far left, "← Home" on /group-stage.**
+  Display/layout only — no logic, scoring, data, or route changes. (1) **Sticky nav** — the
+  `<header>` in `app/components/SiteHeader.tsx` already carried `position: sticky; top: 0;
+  z-index: 50` with a solid `--pitch-900` background (added in "Make top nav bar sticky"; the RO32
+  commit only inserted the hamburger and left the sticky block intact). Investigated the reported
+  regression: `app/layout.tsx` renders each page **directly into `<body>`** with no wrapping div,
+  and `globals.css` sets **no `overflow` or `transform` on `html`/`body`** (the only `overflow`
+  rules — `.lb-scroll`, `MatchLeaderboard`, `moments` — are descendants of `<main>`, siblings of
+  the header, and cannot clip it). So there is **no ancestor overflow-clip/transform** breaking
+  sticky — the CSS is correct and the bar stays pinned on all pages (home/RO32, /group-stage,
+  leaderboard, moments) on desktop and mobile; added a clarifying comment on the background style.
+  (2) **Hamburger to far left** — moved `<HamburgerMenu/>` out of the right-side `<nav>` into a new
+  left flex group **before** the "WC 2026 Predictions" wordmark (`[☰] [logo] …… [right links]`),
+  rendered logged-in only; the right-side links (Hi {name}, Leaderboard, Moments, Admin, Log out)
+  are unchanged. Its dropdown now opens with `left: 0` (was `right: 0`) so it extends rightward from
+  the far-left button; toggle/outside-tap/close-on-link behaviour unchanged. (3) **/group-stage Home
+  link** — added a "← Home" link (styled like the leaderboard back-link) at the top of
+  `app/group-stage/page.tsx` above the stripe/heading, linking to `/`; added the `next/link` import.
+  `npm run build` clean and all 35 scoring tests pass.

@@ -47,7 +47,8 @@ export default function HamburgerMenu() {
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            right: 0,
+            // Button now sits at the far left of the navbar, so open rightward.
+            left: 0,
             minWidth: 200,
             background: "var(--pitch-900)",
             border: "1px solid var(--pitch-line)",

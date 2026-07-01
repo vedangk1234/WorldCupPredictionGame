@@ -30,6 +30,9 @@ export default async function SiteHeader() {
         top: 0,
         zIndex: 50,
         borderBottom: "1px solid var(--pitch-line)",
+        // Solid theme background so scrolled content doesn't show through the
+        // pinned bar. (Sticky requires no ancestor overflow-clip/transform —
+        // layout.tsx renders pages straight into <body>, so none exists.)
         background: "var(--pitch-900)",
       }}
     >
@@ -46,19 +49,23 @@ export default async function SiteHeader() {
           flexWrap: "wrap",
         }}
       >
-        <Link
-          href="/"
-          className="display"
-          style={{
-            color: "var(--chalk)",
-            textDecoration: "none",
-            fontSize: 19,
-            fontWeight: 800,
-            letterSpacing: "0.01em",
-          }}
-        >
-          WC 2026 <span style={{ color: "var(--gold-300)" }}>Predictions</span>
-        </Link>
+        {/* Far-left group: hamburger (logged-in only) sits before the wordmark. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {user && <HamburgerMenu />}
+          <Link
+            href="/"
+            className="display"
+            style={{
+              color: "var(--chalk)",
+              textDecoration: "none",
+              fontSize: 19,
+              fontWeight: 800,
+              letterSpacing: "0.01em",
+            }}
+          >
+            WC 2026 <span style={{ color: "var(--gold-300)" }}>Predictions</span>
+          </Link>
+        </div>
 
         <nav style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 14.5 }}>
           {user ? (
@@ -103,7 +110,6 @@ export default async function SiteHeader() {
                   Log out
                 </button>
               </form>
-              <HamburgerMenu />
             </>
           ) : (
             <>
