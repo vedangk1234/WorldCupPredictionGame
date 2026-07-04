@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { fmtIST, fmtISTTime } from "@/lib/format";
+import { isKnockout } from "@/lib/scoring";
 import type { Stage } from "@/lib/types";
 
 // Shared admin match list, rendered by /admin (ro32) and /admin/group-stage
@@ -87,12 +88,12 @@ export default async function AdminMatchList({
   stage,
   eyebrow,
   title,
-  navLink,
+  navLinks,
 }: {
   stage: Stage;
   eyebrow: string;
   title: string;
-  navLink: NavLink;
+  navLinks: NavLink[];
 }) {
   const { supabase } = await requireAdmin();
 
@@ -110,7 +111,9 @@ export default async function AdminMatchList({
 
   const matches = (data ?? []) as unknown as AdminMatchRow[];
   const now = Date.now();
-  const isKnockout = stage === "ro32";
+  const knockout = isKnockout(stage);
+  // Per-match round label for a knockout row's metadata line.
+  const roundLabel = stage === "ro16" ? "Round of 16" : "Round of 32";
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "40px 24px 80px" }}>
@@ -138,20 +141,25 @@ export default async function AdminMatchList({
         <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: 0 }}>
           {title}
         </h1>
-        <Link
-          href={navLink.href}
-          style={{
-            color: "var(--gold-300)",
-            fontWeight: 700,
-            fontSize: 14,
-            textDecoration: "none",
-            border: "1px solid var(--pitch-line)",
-            borderRadius: 99,
-            padding: "7px 14px",
-          }}
-        >
-          {navLink.label}
-        </Link>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {navLinks.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              style={{
+                color: "var(--gold-300)",
+                fontWeight: 700,
+                fontSize: 14,
+                textDecoration: "none",
+                border: "1px solid var(--pitch-line)",
+                borderRadius: 99,
+                padding: "7px 14px",
+              }}
+            >
+              {l.label}
+            </Link>
+          ))}
+        </div>
       </div>
 
       {/* Legend */}
@@ -181,7 +189,7 @@ export default async function AdminMatchList({
       )}
       {!error && matches.length === 0 && (
         <p style={{ color: "var(--chalk-dim)" }}>
-          No {isKnockout ? "knockout" : "group-stage"} matches found.
+          No {knockout ? "knockout" : "group-stage"} matches found.
         </p>
       )}
 
@@ -256,8 +264,8 @@ export default async function AdminMatchList({
                 }}
               >
                 <span>
-                  {isKnockout
-                    ? "Round of 32"
+                  {knockout
+                    ? roundLabel
                     : `Group ${m.group_letter ?? "—"}${m.matchday ? ` · MD ${m.matchday}` : ""}`}
                 </span>
                 <span>Kickoff {fmtIST(m.kickoff_at)}</span>

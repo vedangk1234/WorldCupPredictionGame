@@ -29,11 +29,12 @@ export interface Player {
   shirt_number: number | null;
 }
 
-// `stage` distinguishes group-stage fixtures ('group') from knockouts ('ro32').
+// `stage` distinguishes group-stage fixtures ('group') from knockouts ('ro32',
+// 'ro16'). The knockout stages score IDENTICALLY (see lib/scoring.ts isKnockout).
 // For a knockout, et_score_a/b hold the ACTUAL extra-time totals (include the FT
 // goals) and pen_winner_team_id the ACTUAL shoot-out winner — both null until a
 // drawn FT goes to ET / pens. See CLAUDE.md §knockout-scoring.
-export type Stage = "group" | "ro32";
+export type Stage = "group" | "ro32" | "ro16";
 
 export interface Match {
   id: number;

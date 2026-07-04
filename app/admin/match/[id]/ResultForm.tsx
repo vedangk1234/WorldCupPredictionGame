@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { GoalEntry, Stage } from "@/lib/types";
+import { isKnockout } from "@/lib/scoring";
 import { saveAndCompute, type SaveExtras } from "../../actions";
 import { buildScorerGroups, type ScorerOptionGroup } from "@/lib/scorer-options";
 
@@ -211,7 +212,7 @@ export default function ResultForm({
   initialPenWinnerTeamId,
   finished,
 }: Props) {
-  const isKnockout = stage === "ro32";
+  const knockout = isKnockout(stage);
 
   const [scoreA, setScoreA] = useState(initialScoreA === null ? "" : String(initialScoreA));
   const [scoreB, setScoreB] = useState(initialScoreB === null ? "" : String(initialScoreB));
@@ -268,7 +269,7 @@ export default function ResultForm({
     scoreA !== "" && scoreB !== "" && Number.isInteger(numA) && Number.isInteger(numB);
   const ftIsDraw = ftFilled && numA === numB;
   // ET / penalty inputs only matter for a knockout whose FT ended level.
-  const showEt = isKnockout && ftIsDraw;
+  const showEt = knockout && ftIsDraw;
   const etFilled =
     etScoreA !== "" && etScoreB !== "" && Number.isInteger(numEtA) && Number.isInteger(numEtB);
   const etIsDraw = showEt && etFilled && numEtA === numEtB;
@@ -399,7 +400,7 @@ export default function ResultForm({
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {isKnockout && (
+      {knockout && (
         <div
           style={{
             fontSize: 12.5,
@@ -418,7 +419,7 @@ export default function ResultForm({
       {/* FULL-TIME SCORE */}
       <div style={card}>
         <h2 className="display" style={{ fontSize: 17, margin: "0 0 14px" }}>
-          {isKnockout ? "Full-time score (90 mins)" : "Final score"}
+          {knockout ? "Full-time score (90 mins)" : "Final score"}
         </h2>
         <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
@@ -458,7 +459,7 @@ export default function ResultForm({
       {/* FULL-TIME GOAL SCORERS */}
       <div style={card}>
         <h2 className="display" style={{ fontSize: 17, margin: "0 0 4px" }}>
-          {isKnockout ? "Full-time goal scorers" : "Goal scorers"}
+          {knockout ? "Full-time goal scorers" : "Goal scorers"}
         </h2>
         <p style={{ color: "var(--chalk-dim)", fontSize: 13, margin: "0 0 6px" }}>
           One row per goal — add a player twice for a brace. For an <strong>own goal</strong>,
@@ -646,7 +647,7 @@ export default function ResultForm({
           </button>
         </div>
         <p style={{ color: "var(--chalk-dim)", fontSize: 12.5, margin: "12px 0 0" }}>
-          One step: saves the score{isKnockout ? " (+ ET / penalties)" : ""} + scorers, marks the
+          One step: saves the score{knockout ? " (+ ET / penalties)" : ""} + scorers, marks the
           match <strong>finished</strong>, and runs the scoring engine over every{" "}
           <strong>locked</strong> prediction (unlocked = out of the match, skipped).
           Idempotent — re-open this match, correct the result, and{" "}

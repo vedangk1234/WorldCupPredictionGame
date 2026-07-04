@@ -24,7 +24,7 @@ interface MatchDetail {
   score_a: number | null;
   score_b: number | null;
   finished: boolean;
-  stage: "group" | "ro32";
+  stage: "group" | "ro32" | "ro16";
   et_score_a: number | null;
   et_score_b: number | null;
   pen_winner_team_id: number | null;
@@ -101,10 +101,21 @@ export default async function MatchDetailPage({ params }: { params: { id: string
       <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18 }} />
 
       <Link
-        href={match.stage === "ro32" ? "/admin" : "/admin/group-stage"}
+        href={
+          match.stage === "ro16"
+            ? "/admin"
+            : match.stage === "ro32"
+              ? "/admin/ro32"
+              : "/admin/group-stage"
+        }
         style={{ color: "var(--chalk-dim)", fontSize: 13, textDecoration: "none" }}
       >
-        ← {match.stage === "ro32" ? "Round of 32" : "Group stage"}
+        ←{" "}
+        {match.stage === "ro16"
+          ? "Round of 16"
+          : match.stage === "ro32"
+            ? "Round of 32"
+            : "Group stage"}
       </Link>
 
       <div style={{ margin: "14px 0 6px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

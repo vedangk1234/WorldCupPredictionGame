@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { computeRound2MatchIds } from "@/lib/round2";
+import { isKnockout } from "@/lib/scoring";
+import type { Stage } from "@/lib/types";
 
 export interface ActionResult {
   ok: boolean;
@@ -129,11 +131,12 @@ async function writePrediction(
   }
 
   // ----- Resolve + validate the knockout ET / penalty / ET-scorer fields -----
-  // The stored stage is the authority. ET only applies on an ro32 match whose
-  // PREDICTED full-time score is a draw (the signal the user expects extra time).
-  const isKnockout = (match.stage as string) === "ro32";
+  // The stored stage is the authority. ET only applies on a knockout match
+  // (ro32/ro16) whose PREDICTED full-time score is a draw (the signal the user
+  // expects extra time).
+  const knockout = isKnockout(match.stage as Stage);
   const predFtDraw = scoreA === scoreB;
-  const wantEt = isKnockout && predFtDraw;
+  const wantEt = knockout && predFtDraw;
 
   let predEtA: number | null = null;
   let predEtB: number | null = null;
@@ -281,8 +284,9 @@ async function writePrediction(
     if (lockErr) return { ok: false, message: lockErr.message };
   }
 
-  // Group fixtures live at /group-stage; ro32 cards live on the home page.
+  // Group fixtures live at /group-stage; ro32 cards at /ro32; ro16 on the home page.
   revalidatePath("/group-stage");
+  revalidatePath("/ro32");
   revalidatePath("/");
   return {
     ok: true,

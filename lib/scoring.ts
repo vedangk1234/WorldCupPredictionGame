@@ -12,10 +12,11 @@
 //
 // STAGE behaviour:
 //   - 'group' → behaves EXACTLY as before. All et/pen fields are IGNORED.
-//   - 'ro32'  → FT scoring as in group, PLUS an extra-time (ET) portion that
-//     only applies when the user PREDICTED an FT draw, PLUS a penalty portion
-//     when the user predicted a level ET and the match actually went to pens.
-//     Superstar applies on EVERY ro32 match (not just round-3).
+//   - 'ro32' / 'ro16' → KNOCKOUT stages, scored IDENTICALLY: FT scoring as in
+//     group, PLUS an extra-time (ET) portion that only applies when the user
+//     PREDICTED an FT draw, PLUS a penalty portion when the user predicted a
+//     level ET and the match actually went to pens. Superstar applies on EVERY
+//     knockout match (not just round-3). See `isKnockout()` below.
 //
 // Only the FT components (winner/gd/exact/scorer/underdog) become leaderboard
 // columns/tallies. ET points, penalty points, and the superstar delta fold into
@@ -26,8 +27,18 @@ export interface ActualGoal {
   isOwnGoal: boolean;
 }
 
+// A stage is a KNOCKOUT (ET / penalties / contingent bonuses / superstar-anywhere
+// all apply) when it's 'ro32' OR 'ro16'. Group fixtures are never knockouts.
+// Single source of truth — used by the engine and re-used by the admin recompute,
+// the lock action, and the UI so every "is this a knockout?" check stays in sync.
+export function isKnockout(stage: KnockoutOrGroup): boolean {
+  return stage === "ro32" || stage === "ro16";
+}
+
+type KnockoutOrGroup = "group" | "ro32" | "ro16";
+
 export interface ScoringInput {
-  stage: "group" | "ro32";
+  stage: KnockoutOrGroup;
   predScoreA: number; // FT prediction, aligned to the match's team_a / team_b slots
   predScoreB: number;
   predictedScorerIds: number[]; // FT scorer picks the user backed (may be empty)
@@ -40,7 +51,7 @@ export interface ScoringInput {
   isRound3: boolean; // group-stage round-3 (3rd by kickoff for BOTH teams) — drives superstar in group stage
   superstarPlayerIds: number[]; // ids of players flagged is_superstar
 
-  // --- ro32 only (ignored entirely when stage === 'group') -----------------
+  // --- knockout only (ro32/ro16; ignored entirely when stage === 'group') --
   etScoreA?: number; // ACTUAL extra-time total (includes the FT goals)
   etScoreB?: number;
   penWinnerTeamId?: number | null; // ACTUAL penalty winner (only when ET ended level)
@@ -98,7 +109,7 @@ function scoreScorers(
 }
 
 export function scorePrediction(input: ScoringInput): ScoringResult {
-  const isRo32 = input.stage === "ro32";
+  const knockout = isKnockout(input.stage);
 
   // ---- FT portion (ALWAYS — identical to the group-stage rules) -----------
   const predMargin = input.predScoreA - input.predScoreB;
@@ -158,7 +169,7 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   // The ET portion applies ONLY when the user predicted an FT draw — that is the
   // signal that they expected the match to go beyond 90 minutes.
   const predictedFtDraw = input.predScoreA === input.predScoreB;
-  if (isRo32 && predictedFtDraw) {
+  if (knockout && predictedFtDraw) {
     const etA = input.etScoreA ?? 0;
     const etB = input.etScoreB ?? 0;
     const predEtA = input.predEtA ?? 0;
@@ -213,11 +224,11 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   // at least one REAL (non-own) goal ANYWHERE in the match (FT or ET), else −3.
   // Folds into the total only; does NOT touch correctScorers or any tally.
   let superstarPts = 0;
-  const applySuperstar = isRo32 ? true : input.isRound3;
+  const applySuperstar = knockout ? true : input.isRound3;
   if (applySuperstar) {
     const superstarSet = new Set(input.superstarPlayerIds);
     const allPicks = new Set([...input.predictedScorerIds, ...etPicks]);
-    const allGoals = isRo32 ? [...input.actualGoals, ...etGoals] : input.actualGoals;
+    const allGoals = knockout ? [...input.actualGoals, ...etGoals] : input.actualGoals;
     for (const pid of allPicks) {
       if (!superstarSet.has(pid)) continue;
       let realGoals = 0;

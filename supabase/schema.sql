@@ -188,7 +188,11 @@ create table public.prediction_scorers (
   prediction_id  bigint not null references public.predictions(id) on delete cascade,
   player_id      bigint not null references public.players(id),
   is_et          boolean not null default false,  -- true = an ET scorer pick (knockouts)
-  unique (prediction_id, player_id)
+  -- Uniqueness includes is_et so the SAME player may be picked once as an FT
+  -- scorer (is_et=false) AND once as an ET scorer (is_et=true) for one
+  -- prediction; duplicates within a phase are still rejected. Scoring is
+  -- phase-strict (an FT pick only pays for FT goals, an ET pick only for ET).
+  unique (prediction_id, player_id, is_et)
 );
 
 -- =============================================================================

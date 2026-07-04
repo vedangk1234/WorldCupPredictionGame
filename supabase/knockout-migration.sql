@@ -35,3 +35,16 @@ alter table public.match_goals
   add column if not exists is_et boolean not null default false;
 alter table public.prediction_scorers
   add column if not exists is_et boolean not null default false;
+
+-- ---- NEW: allow the SAME player in BOTH the FT and ET scorer lists ----
+-- A player may be picked once as a full-time scorer (is_et = false) AND once as
+-- an extra-time scorer (is_et = true) for the same prediction. The old
+-- `unique (prediction_id, player_id)` constraint blocked that; widen the
+-- uniqueness to include is_et so each (phase) pick is its own row. Duplicates
+-- WITHIN a phase (same player + same is_et twice) are still rejected. Scoring
+-- stays phase-strict — an FT pick only pays for FT goals, an ET pick only for ET
+-- goals — so a single goal never pays twice.
+alter table public.prediction_scorers
+  drop constraint if exists prediction_scorers_prediction_id_player_id_key;
+create unique index if not exists prediction_scorers_pred_player_et_key
+  on public.prediction_scorers (prediction_id, player_id, is_et);

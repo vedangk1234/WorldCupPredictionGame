@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { scorePrediction, ActualGoal } from "@/lib/scoring";
+import { scorePrediction, isKnockout, ActualGoal } from "@/lib/scoring";
 import { computeRound3MatchIds } from "@/lib/round3";
 import type { GoalEntry, Stage } from "@/lib/types";
 
@@ -100,10 +100,11 @@ export async function saveAndCompute(
     .single();
   if (loadErr || !match) return { ok: false, message: "Match not found." };
 
-  // Trust the stored stage as the authority (not the client's claim).
-  const isKnockout = (match.stage as Stage) === "ro32";
+  // Trust the stored stage as the authority (not the client's claim). Both
+  // knockout stages (ro32/ro16) get the ET/penalty treatment.
+  const knockout = isKnockout(match.stage as Stage);
   const ftDraw = scoreA === scoreB;
-  const storeEt = isKnockout && ftDraw;
+  const storeEt = knockout && ftDraw;
 
   // Resolve the ET / penalty values to persist.
   let etScoreA: number | null = null;
@@ -244,7 +245,7 @@ async function recomputeMatch(supabase: ServerClient, matchId: number): Promise<
   // Round-3 eligibility (3rd match by kickoff for BOTH teams) is derived from
   // ALL matches — same single source of truth used by the predictions UI. In a
   // GROUP match the +3/−3 superstar bonus applies only when round-3; in a
-  // knockout the engine applies it on every ro32 match (stage-driven).
+  // knockout (ro32/ro16) the engine applies it on every match (stage-driven).
   const { data: allMatches, error: allErr } = await supabase
     .from("matches")
     .select("id, team_a_id, team_b_id, kickoff_at");

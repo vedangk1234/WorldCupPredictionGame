@@ -93,9 +93,10 @@ interface Props {
   // The logged-in user's own display zone (profiles.timezone, default
   // "Asia/Kolkata"). Display only — the real lock instant is unchanged.
   userTimeZone: string;
-  // 'group' fixtures behave exactly as before; 'ro32' unlocks the knockout
-  // extra-time / penalty prediction flow (CLAUDE.md §2.10).
-  stage: "group" | "ro32";
+  // 'group' fixtures behave exactly as before; knockouts ('ro32'/'ro16') unlock
+  // the knockout extra-time / penalty prediction flow (CLAUDE.md §2.10). The two
+  // knockout stages behave identically — only the displayed round label differs.
+  stage: "group" | "ro32" | "ro16";
   teamA: CardTeam;
   teamB: CardTeam;
   underdog: CardTeam | null;
@@ -188,7 +189,10 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
-  const isRo32 = stage === "ro32";
+  // Both knockout stages (ro32/ro16) use the identical ET/penalty flow. The label
+  // below is the only stage-specific difference.
+  const isKnockout = stage === "ro32" || stage === "ro16";
+  const knockoutLabel = stage === "ro16" ? "Round of 16" : "Round of 32";
 
   // 2x eligibility (CLAUDE.md "2x tokens"): round-2 AND no underdog. A round-2
   // match WITH an underdog shows an explanatory note instead of the toggle;
@@ -201,7 +205,7 @@ export default function MatchCard(props: Props) {
   // +3/−3 bonus math is applied server-side and is unchanged.
   const hasSuperstar =
     squadA.some((p) => p.is_superstar) || squadB.some((p) => p.is_superstar);
-  const showSuperstarNote = (isRound3 || isRo32) && hasSuperstar;
+  const showSuperstarNote = (isRound3 || isKnockout) && hasSuperstar;
 
   const [scoreA, setScoreA] = useState(
     myPrediction ? String(myPrediction.scoreA) : "",
@@ -277,7 +281,7 @@ export default function MatchCard(props: Props) {
   // draw (the signal the user expects extra time). All of this is display logic;
   // the lock action re-validates everything server-side.
   const predFtDraw = validScores && numA === numB;
-  const showEt = isRo32 && predFtDraw;
+  const showEt = isKnockout && predFtDraw;
   const numEtA = etScoreA === "" ? 0 : Number(etScoreA);
   const numEtB = etScoreB === "" ? 0 : Number(etScoreB);
   const etFilled =
@@ -367,7 +371,7 @@ export default function MatchCard(props: Props) {
   // Build the knockout extras to send (and surface client-side blockers early).
   // Returns the extras (or null for group / decisive FT), or false if invalid.
   function buildRo32(): Ro32LockExtras | null | false {
-    if (!isRo32 || !predFtDraw) return null;
+    if (!isKnockout || !predFtDraw) return null;
     if (!etFilled) {
       setMsg({ ok: false, text: "Enter the extra-time total score." });
       return false;
@@ -423,7 +427,7 @@ export default function MatchCard(props: Props) {
     const hasScore = props.finalScoreA !== null && props.finalScoreB !== null;
     // Knockout actuals: whether ET was played, and the shoot-out winner (if any).
     const etPlayed =
-      isRo32 && props.finalEtScoreA !== null && props.finalEtScoreB !== null;
+      isKnockout && props.finalEtScoreA !== null && props.finalEtScoreB !== null;
     const penTeam =
       props.penWinnerTeamId === teamA.id
         ? teamA
@@ -507,8 +511,8 @@ export default function MatchCard(props: Props) {
               }}
             >
               <span>
-                {isRo32 ? "Round of 32" : `Group ${props.groupLetter ?? "—"}`}
-                {!isRo32 && props.matchday ? ` · MD ${props.matchday}` : ""}
+                {isKnockout ? knockoutLabel : `Group ${props.groupLetter ?? "—"}`}
+                {!isKnockout && props.matchday ? ` · MD ${props.matchday}` : ""}
               </span>
               <span>Kickoff {fmtTime(props.kickoffAt, props.userTimeZone)}</span>
               <span>Closes {fmtTimeOnly(props.closeAt, props.userTimeZone)}</span>
@@ -543,7 +547,7 @@ export default function MatchCard(props: Props) {
               </div>
             )}
 
-            {isRo32 ? (
+            {isKnockout ? (
               <>
                 <ScorersSummary goals={ftGoals} teamA={teamA} teamB={teamB} title="Full-time scorers" />
                 {etGoals.length > 0 && (
@@ -1002,7 +1006,7 @@ export default function MatchCard(props: Props) {
             >
               ⭐ <strong>Superstar match:</strong> pick a starred player to score and you get{" "}
               <strong>+3</strong> if they score{" "}
-              {isRo32 ? "anywhere in the match (full-time or extra time)" : ""} (on top of normal
+              {isKnockout ? "anywhere in the match (full-time or extra time)" : ""} (on top of normal
               points) — but <strong>−3</strong> if they don&apos;t. Choose wisely.
             </div>
           )}
@@ -1174,7 +1178,7 @@ export default function MatchCard(props: Props) {
                 ids={myPrediction.scorerIds}
                 playerName={playerName}
                 superstarIds={superstarIds}
-                label={isRo32 && myPrediction.predEtA != null ? "Full-time scorers" : "Scorers"}
+                label={isKnockout && myPrediction.predEtA != null ? "Full-time scorers" : "Scorers"}
               />
               <KnockoutPredLine
                 predEtA={myPrediction.predEtA}

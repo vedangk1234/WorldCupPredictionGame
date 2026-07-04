@@ -163,13 +163,18 @@ view column are **left in the DB as-is** (no migration); any old `streak_bonus`
 rows still fold their `bonus_pts` into `total_pts` via the view but are never
 refreshed. See §2.10 for the knockout scoring that replaced the round-3 emphasis.
 
-### 2.10 Knockout scoring (Round of 32 — `stage = 'ro32'`)
+### 2.10 Knockout scoring (Round of 32 & Round of 16 — `stage = 'ro32' | 'ro16'`)
 
 Knockout matches can't end level, so on top of the normal full-time (FT) scoring
 they add an **extra-time (ET)** portion and a **penalty** portion. The pure engine
 `lib/scoring.ts` handles all of it via `scorePrediction({ stage, … })`; group
 fixtures (`stage = 'group'`) behave **exactly as before** and ignore every ET/pen
-field.
+field. **Both knockout stages — `'ro32'` and `'ro16'` — score IDENTICALLY**; the
+single source of truth is `lib/scoring.ts → isKnockout(stage)` (`stage === 'ro32'
+|| stage === 'ro16'`), used everywhere a "is this a knockout?" check is needed
+(engine, admin recompute, lock action, `MatchCard`, `ResultForm`, admin lists).
+The two stages differ only in the **displayed round label** ("Round of 32" vs
+"Round of 16"). Everything below written for ro32 applies verbatim to ro16.
 
 - **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
   **+1** (includes a correct FT draw, GD 0), FT winner **+3** (only if FT is
@@ -208,15 +213,19 @@ field.
   all FT-based). The ET points, penalty points, and superstar delta fold into
   **`total_pts` ONLY** — they add no column and don't touch the tally counts. Any
   `used_2x` doubling still applies on the final total. Negatives are unclamped.
-- **Data:** `matches.stage` (`'group'`|`'ro32'`), `matches.et_score_a/b` (ACTUAL ET
-  totals), `matches.pen_winner_team_id` (ACTUAL shoot-out winner). Predictions carry
-  `pred_et_a/b` and `pred_pen_winner_team_id`. Goals and scorer picks are tagged with
-  an **`is_et`** boolean (`match_goals.is_et`, `prediction_scorers.is_et`) so ET goals
-  and ET picks are distinguishable from FT ones. The admin entry + recompute live in
-  `app/admin/actions.ts` (`saveAndCompute` / `recomputeMatch`). The **user** prediction
-  inputs for ET/pen/ET-scorers live in `app/predictions/MatchCard.tsx` (the conditional
-  FT→ET→penalty flow) + `lockPrediction` (`app/predictions/actions.ts`, server-validated);
-  ro32 cards render on the **home page** (`app/page.tsx`).
+- **Data:** `matches.stage` (`'group'`|`'ro32'`|`'ro16'`), `matches.et_score_a/b`
+  (ACTUAL ET totals), `matches.pen_winner_team_id` (ACTUAL shoot-out winner).
+  Predictions carry `pred_et_a/b` and `pred_pen_winner_team_id`. Goals and scorer
+  picks are tagged with an **`is_et`** boolean (`match_goals.is_et`,
+  `prediction_scorers.is_et`) so ET goals and ET picks are distinguishable from FT
+  ones. The admin entry + recompute live in `app/admin/actions.ts` (`saveAndCompute`
+  / `recomputeMatch`). The **user** prediction inputs for ET/pen/ET-scorers live in
+  `app/predictions/MatchCard.tsx` (the conditional FT→ET→penalty flow) +
+  `lockPrediction` (`app/predictions/actions.ts`, server-validated). **Page layout:**
+  the **home page** (`app/page.tsx`) renders the **Round of 16** (`stage='ro16'`),
+  the **Round of 32** lives at **`/ro32`** (`app/ro32/page.tsx`) and the group stage
+  at **`/group-stage`** — both reached via the navbar hamburger menu. All three use
+  the same `MatchCard` experience.
 
 ---
 
@@ -1013,3 +1022,38 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   link** — added a "← Home" link (styled like the leaderboard back-link) at the top of
   `app/group-stage/page.tsx` above the stripe/heading, linking to `/`; added the `next/link` import.
   `npm run build` clean and all 35 scoring tests pass.
+- **Round of 16 added as the new home page; RO32 moved to its own `/ro32` page behind the
+  hamburger menu; knockout scoring extended to cover ro16 (see §2.10).** Mirrors the earlier
+  group-stage → `/group-stage` move. **Prereq (done in Supabase):** 8 matches inserted with
+  `stage = 'ro16'` (existing stages: `'group'`, `'ro32'`). • **Engine (`lib/scoring.ts`):** the
+  knockout scoring (ET / penalties / final-outcome-contingent bonuses / superstar-anywhere) was
+  gated on `stage === 'ro32'`; it now applies to **both** `'ro32'` AND `'ro16'` with the
+  IDENTICAL rules. New exported helper **`isKnockout(stage) = stage === 'ro32' || stage ===
+  'ro16'`** is the single source of truth, used everywhere a knockout check was `=== 'ro32'`
+  (engine, admin recompute, lock action, `MatchCard`, `ResultForm`, admin `MatchList`). Group
+  (`'group'`) scoring is byte-identical. Superstar (same flagged players, ±3, scored anywhere
+  FT/ET) applies on ro16 too. `lib/types.ts`: `Stage = 'group' | 'ro32' | 'ro16'`. • **Recompute
+  (`app/admin/actions.ts`):** `saveAndCompute` uses `isKnockout(stage)` so ro16 gets the ET/pen
+  treatment (ET inputs stored when FT is a draw); `recomputeMatch` already passes `stage` straight
+  into the engine, so ro16 is scored the knockout way automatically. • **New user `/ro32` page
+  (`app/ro32/page.tsx`):** the previous home-page RO32 rendering moved here verbatim (same
+  `MatchCard` experience, knockout prediction flow, superstar, the 1000-row chunked pagination on
+  players/predictions/points/goals, timezone display, reveal, finished collapsibles), filtered to
+  `stage='ro32'`, with a "← Home" link at the top; `requireUser()`-gated. • **Home
+  (`app/page.tsx`) = Round of 16:** same data-loading carried over verbatim but filtered to
+  `stage='ro16'`, heading "Round of 16", cards pass `stage="ro16"`; keeps the `<ScoringRules/>`
+  box. • **Hamburger menu (`HamburgerMenu.tsx`):** now has TWO links — "RO32 Matches" (→ `/ro32`)
+  and "Group Stage Matches" (→ `/group-stage`); still far-left, behaviour otherwise unchanged. •
+  **Admin:** main `/admin` now lists **ro16** ("Round of 16") with two nav links — "RO32 Matches
+  →" (→ new `app/admin/ro32/page.tsx`, the old ro32 list) and "Group Stage Matches →" (→
+  `/admin/group-stage`). `AdminMatchList` now takes `navLinks: NavLink[]` (was a single
+  `navLink`), uses `isKnockout(stage)` + a per-stage round label ("Round of 16"/"Round of 32"),
+  and the `/admin/match/[id]` back-link + `ResultForm` ET/pen condition are stage-aware for all
+  three stages (ET/pen inputs show for ro16 too when FT is a draw). Admin stays `requireAdmin`-
+  gated and IST. • **`ScoringRules.tsx`** knockout heading generalised to "⚔ Knockouts (Round of
+  16 & Round of 32)". • **Routing:** `lockPrediction` now revalidates `/ro32` in addition to
+  `/group-stage` and `/`; `/predictions → /` redirect unchanged. • **Tests
+  (`scripts/test-scoring.ts`):** added `'ro16'` to the case `stage` type and **3 new ro16 cases
+  (36–38)** duplicating ro32 cases (ET winner, level-ET→pens, superstar-scores-in-ET) to prove the
+  identical knockout scoring. Now **38 cases, all pass**; `npm run build` clean (routes show `/`,
+  `/ro32`, `/group-stage`, `/admin`, `/admin/ro32`, `/admin/group-stage`).

@@ -26,7 +26,7 @@ interface Expect {
 
 interface Case {
   num: number;
-  stage?: 'group' | 'ro32'; // default 'group'
+  stage?: 'group' | 'ro32' | 'ro16'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -131,6 +131,49 @@ const cases: Case[] = [
   { num: 31, stage: 'ro32', pred: [2, 2], actual: [2, 2], goals: [n(800)], picks: [800], underdog: null,
     predEt: [4, 3], etActual: [3, 4], etGoals: [], etPicks: [],
     expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 1 } },
+
+  // --- Same player in BOTH FT and ET scorer lists: scoring is PHASE-STRICT. ---
+  // Player 700 (non-superstar). FT pred draw 1–1 → actual FT 1–0 (decisive, so FT
+  // winner/gd/exact all 0). Predicted decisive ET 2–1 but actual ET 1–2 (wrong ET
+  // winner ⇒ all ET winner/gd/exact zeroed) — this isolates the scorer points.
+  // j) picked in BOTH, scores 1 FT goal + 1 ET goal → +2 (FT) +2 (ET) = +4.
+  { num: 32, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [n(700)], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 1 } },
+
+  // k) picked in BOTH, scores ONLY 1 FT goal → FT pick pays +2, ET pick pays 0 → +2 (NOT +4).
+  { num: 33, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [n(700)], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [1, 2], etGoals: [], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 1 } },
+
+  // l) picked in FT ONLY, scores only in ET → FT pick doesn't pay for an ET goal → 0.
+  { num: 34, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // m) picked in ET ONLY, scores only in ET → ET pick pays +2.
+  { num: 35, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 0 } },
+
+  // ===================== Knockout (ro16) — IDENTICAL rules to ro32 =====================
+  // These duplicate ro32 cases (b, c, f1) with stage='ro16' to prove the RO16 stage
+  // scores the same knockout way (ET / penalties / contingent bonuses / superstar).
+  // n) (mirrors 23) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  { num: 36, stage: 'ro16', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+
+  // o) (mirrors 24) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → FT GD+1, exact FT+5, ET GD+1, exact ET+5, pens+5 = 17.
+  { num: 37, stage: 'ro16', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 2], etActual: [2, 2], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+
+  // p) (mirrors 27) superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
+  //    pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1. FT all wrong → 0; superstar +3.
+  { num: 38, stage: 'ro16', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
+    superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(35)],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 3, correctScorers: 0 } },
 ];
 
 let failures = 0;

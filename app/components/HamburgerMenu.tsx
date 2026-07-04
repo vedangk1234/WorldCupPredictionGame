@@ -59,6 +59,22 @@ export default function HamburgerMenu() {
           }}
         >
           <Link
+            href="/ro32"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "block",
+              color: "var(--chalk)",
+              fontWeight: 600,
+              textDecoration: "none",
+              padding: "9px 12px",
+              borderRadius: 7,
+              fontSize: 14.5,
+            }}
+          >
+            RO32 Matches
+          </Link>
+          <Link
             href="/group-stage"
             role="menuitem"
             onClick={() => setOpen(false)}
