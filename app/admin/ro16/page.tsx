@@ -2,14 +2,14 @@ import AdminMatchList from "../MatchList";
 
 export const dynamic = "force-dynamic";
 
-// Admin Round-of-32 list — the ro32 knockout matches for entry/correction
+// Admin Round-of-16 list — the ro16 knockout matches for entry/correction
 // (moved here from the admin home, which now shows the Quarter-finals).
-export default async function AdminRo32() {
+export default async function AdminRo16() {
   return (
     <AdminMatchList
-      stage="ro32"
+      stage="ro16"
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
-      title="Round of 32"
+      title="Round of 16"
       navLinks={[{ href: "/admin", label: "← Quarter-finals" }]}
     />
   );

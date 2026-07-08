@@ -13,10 +13,10 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-// The Round of 32 knockout matches. Reached from the navbar hamburger menu (the
-// home page now shows the Quarter-finals; the Round of 16 lives at /ro16). The
-// match experience is identical to the other knockout stages — MatchCard handles
-// the knockout extra-time / penalty flow when stage='ro32'. Logged-out users → /login.
+// The Round of 16 knockout matches (moved off the home page, which now shows the
+// Quarter-finals). Reached from the navbar hamburger menu. The match experience
+// is identical to the group stage / RO32 / QF — MatchCard handles the knockout
+// extra-time / penalty flow when stage='ro16'. Logged-out users → /login.
 
 interface JoinedTeam {
   id: number;
@@ -34,7 +34,7 @@ interface MatchRow {
   score_a: number | null;
   score_b: number | null;
   finished: boolean;
-  stage: "group" | "ro32" | "ro16";
+  stage: "group" | "ro32" | "ro16" | "qf";
   et_score_a: number | null;
   et_score_b: number | null;
   pen_winner_team_id: number | null;
@@ -91,10 +91,10 @@ function etPicks(rows: { player_id: number; is_et: boolean }[] | null): number[]
   return (rows ?? []).filter((s) => s.is_et).map((s) => s.player_id);
 }
 
-export default async function Ro32Page() {
+export default async function Ro16Page() {
   const { user, supabase, timeZone } = await requireUser();
 
-  // Round-of-32 matches, soonest first, with both teams + underdog joined.
+  // Round-of-16 matches, soonest first, with both teams + underdog joined.
   const { data: matchesData, error: matchErr } = await supabase
     .from("matches")
     .select(
@@ -105,15 +105,15 @@ export default async function Ro32Page() {
        team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url),
        underdog:teams!matches_underdog_team_id_fkey(id, name, code, flag_url)`,
     )
-    // This screen is the Round of 32 — group fixtures live at /group-stage, the
-    // Round of 16 at /ro16 and the Quarter-finals on the home page; none must leak
-    // into this list.
-    .eq("stage", "ro32")
+    // This screen is the Round of 16 — group fixtures live at /group-stage, the
+    // Round of 32 at /ro32, and the Quarter-finals on the home page; none must
+    // leak into this list.
+    .eq("stage", "ro16")
     .order("kickoff_at", { ascending: true });
   const matches = (matchesData ?? []) as unknown as MatchRow[];
 
   // The current user's own predictions (+ backed scorers, FT and ET) across all
-  // ro32 matches.
+  // ro16 matches.
   const { data: myPredsData } = await supabase
     .from("predictions")
     .select(
@@ -317,7 +317,7 @@ export default async function Ro32Page() {
           FIFA WORLD CUP 2026 · KNOCKOUTS
         </p>
         <h1 className="display" style={{ fontSize: 38, lineHeight: 1.05, margin: "8px 0 16px" }}>
-          Round of 32
+          Round of 16
         </h1>
 
         {matchErr && (
@@ -327,7 +327,7 @@ export default async function Ro32Page() {
         )}
         {!matchErr && matches.length === 0 && (
           <p style={{ color: "var(--chalk-dim)", marginTop: 20 }}>
-            No Round of 32 matches yet. Check back once they&apos;re set.
+            No Round of 16 matches yet. Check back once they&apos;re set.
           </p>
         )}
 
@@ -377,7 +377,7 @@ export default async function Ro32Page() {
               <MatchCard
                 key={m.id}
                 matchId={m.id}
-                stage="ro32"
+                stage="ro16"
                 groupLetter={m.group_letter}
                 matchday={m.matchday}
                 kickoffAt={m.kickoff_at}

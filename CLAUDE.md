@@ -163,18 +163,19 @@ view column are **left in the DB as-is** (no migration); any old `streak_bonus`
 rows still fold their `bonus_pts` into `total_pts` via the view but are never
 refreshed. See §2.10 for the knockout scoring that replaced the round-3 emphasis.
 
-### 2.10 Knockout scoring (Round of 32 & Round of 16 — `stage = 'ro32' | 'ro16'`)
+### 2.10 Knockout scoring (Quarter-finals, Round of 16 & Round of 32 — `stage = 'qf' | 'ro16' | 'ro32'`)
 
 Knockout matches can't end level, so on top of the normal full-time (FT) scoring
 they add an **extra-time (ET)** portion and a **penalty** portion. The pure engine
 `lib/scoring.ts` handles all of it via `scorePrediction({ stage, … })`; group
 fixtures (`stage = 'group'`) behave **exactly as before** and ignore every ET/pen
-field. **Both knockout stages — `'ro32'` and `'ro16'` — score IDENTICALLY**; the
-single source of truth is `lib/scoring.ts → isKnockout(stage)` (`stage === 'ro32'
-|| stage === 'ro16'`), used everywhere a "is this a knockout?" check is needed
-(engine, admin recompute, lock action, `MatchCard`, `ResultForm`, admin lists).
-The two stages differ only in the **displayed round label** ("Round of 32" vs
-"Round of 16"). Everything below written for ro32 applies verbatim to ro16.
+field. **All knockout stages — `'ro32'`, `'ro16'` and `'qf'` — score IDENTICALLY**;
+the single source of truth is `lib/scoring.ts → isKnockout(stage)` (`stage ===
+'ro32' || stage === 'ro16' || stage === 'qf'`), used everywhere a "is this a
+knockout?" check is needed (engine, admin recompute, lock action, `MatchCard`,
+`ResultForm`, admin lists). The stages differ only in the **displayed round label**
+("Round of 32" / "Round of 16" / "Quarter-final"). Everything below written for
+ro32 applies verbatim to ro16 and qf.
 
 - **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
   **+1** (includes a correct FT draw, GD 0), FT winner **+3** (only if FT is
@@ -213,7 +214,7 @@ The two stages differ only in the **displayed round label** ("Round of 32" vs
   all FT-based). The ET points, penalty points, and superstar delta fold into
   **`total_pts` ONLY** — they add no column and don't touch the tally counts. Any
   `used_2x` doubling still applies on the final total. Negatives are unclamped.
-- **Data:** `matches.stage` (`'group'`|`'ro32'`|`'ro16'`), `matches.et_score_a/b`
+- **Data:** `matches.stage` (`'group'`|`'ro32'`|`'ro16'`|`'qf'`), `matches.et_score_a/b`
   (ACTUAL ET totals), `matches.pen_winner_team_id` (ACTUAL shoot-out winner).
   Predictions carry `pred_et_a/b` and `pred_pen_winner_team_id`. Goals and scorer
   picks are tagged with an **`is_et`** boolean (`match_goals.is_et`,
@@ -222,10 +223,11 @@ The two stages differ only in the **displayed round label** ("Round of 32" vs
   / `recomputeMatch`). The **user** prediction inputs for ET/pen/ET-scorers live in
   `app/predictions/MatchCard.tsx` (the conditional FT→ET→penalty flow) +
   `lockPrediction` (`app/predictions/actions.ts`, server-validated). **Page layout:**
-  the **home page** (`app/page.tsx`) renders the **Round of 16** (`stage='ro16'`),
-  the **Round of 32** lives at **`/ro32`** (`app/ro32/page.tsx`) and the group stage
-  at **`/group-stage`** — both reached via the navbar hamburger menu. All three use
-  the same `MatchCard` experience.
+  the **home page** (`app/page.tsx`) renders the **Quarter-finals** (`stage='qf'`),
+  the **Round of 16** lives at **`/ro16`** (`app/ro16/page.tsx`), the **Round of 32**
+  at **`/ro32`** (`app/ro32/page.tsx`) and the group stage at **`/group-stage`** —
+  the latter three reached via the navbar hamburger menu. All four use the same
+  `MatchCard` experience.
 
 ---
 
@@ -250,7 +252,7 @@ Defined in `supabase/schema.sql`. Summary:
 - **players** — `team_id`, `name`, `position` (GK/DEF/MID/FWD), `shirt_number`.
 - **matches** — `team_a_id`, `team_b_id`, `group_letter`, `matchday`, `kickoff_at`,
   `predictions_close_at`, `underdog_team_id`, `score_a`, `score_b`, `finished`, plus
-  knockout fields `stage` (`'group'`|`'ro32'`, default `'group'`), `et_score_a`,
+  knockout fields `stage` (`'group'`|`'ro32'`|`'ro16'`|`'qf'`, default `'group'`), `et_score_a`,
   `et_score_b` (actual ET totals, incl. FT goals), `pen_winner_team_id` (actual
   shoot-out winner). (`team_a`/`team_b` carry **no** home/away meaning; just two slots.)
 - **match_goals** — actual scorers, **one row per goal** (a brace = two rows):
@@ -1057,3 +1059,38 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   (36–38)** duplicating ro32 cases (ET winner, level-ET→pens, superstar-scores-in-ET) to prove the
   identical knockout scoring. Now **38 cases, all pass**; `npm run build` clean (routes show `/`,
   `/ro32`, `/group-stage`, `/admin`, `/admin/ro32`, `/admin/group-stage`).
+- **Quarter-finals added as the new home page; RO16 moved to its own `/ro16` page behind the
+  hamburger menu; knockout scoring extended to cover qf (see §2.10).** Mirrors the earlier
+  RO16 → `/ro16` (was home) move. **Prereq (done in Supabase):** 4 matches inserted with
+  `stage = 'qf'` (existing stages: `'group'`, `'ro32'`, `'ro16'`). qf uses the **IDENTICAL**
+  knockout scoring as ro32/ro16 (ET / penalties / final-outcome-contingent bonuses /
+  superstar-anywhere) — the only difference is the displayed round label ("Quarter-final"). •
+  **Engine (`lib/scoring.ts`):** `isKnockout(stage)` — the single source of truth for "is this a
+  knockout?" (engine, admin recompute, lock action, `MatchCard`, `ResultForm`, admin `MatchList`)
+  — now returns true for `'ro32' || 'ro16' || 'qf'`; the internal `KnockoutOrGroup` type gained
+  `'qf'`. Group (`'group'`) scoring byte-identical. `lib/types.ts`: `Stage = 'group' | 'ro32' |
+  'ro16' | 'qf'`. • **Recompute (`app/admin/actions.ts`):** unchanged in logic — `saveAndCompute`
+  uses `isKnockout(stage)` so qf gets the ET/pen treatment automatically; `recomputeMatch` passes
+  `stage` straight into the engine. `revalidateAdmin` now also revalidates `/admin/ro16` +
+  `/admin/ro32`. • **New user `/ro16` page (`app/ro16/page.tsx`):** the previous home-page RO16
+  rendering moved here **verbatim** (same `MatchCard` experience, knockout prediction flow,
+  superstar, the 1000-row chunked pagination on players/predictions/points/goals, timezone display,
+  reveal, finished collapsibles), filtered to `stage='ro16'`, with a "← Home" link at the top;
+  `requireUser()`-gated. • **Home (`app/page.tsx`) = Quarter-finals:** same data-loading carried
+  over verbatim but filtered to `stage='qf'`, heading "Quarter-finals", cards pass `stage="qf"`;
+  keeps the `<ScoringRules/>` box. • **Hamburger menu (`HamburgerMenu.tsx`):** now has THREE links —
+  "RO16 Matches" (→ `/ro16`), "RO32 Matches" (→ `/ro32`) and "Group Stage Matches" (→
+  `/group-stage`); still far-left, behaviour otherwise unchanged. • **`MatchCard.tsx`:** the `stage`
+  prop type + the local `isKnockout` derivation gained `'qf'`; `knockoutLabel` now yields
+  "Quarter-final" for qf. • **Admin:** main `/admin` now lists **qf** ("Quarter-finals") with THREE
+  nav links — "RO16 Matches →" (→ new `app/admin/ro16/page.tsx`, "← Quarter-finals" back), "RO32
+  Matches →" (→ `app/admin/ro32/page.tsx`, back link relabelled "← Quarter-finals") and "Group
+  Stage Matches →". `AdminMatchList`'s per-stage round label gained "Quarter-final"; the
+  `/admin/match/[id]` back-link is stage-aware for all four stages (qf → `/admin`). Admin stays
+  `requireAdmin`-gated and IST. • **`ScoringRules.tsx`** knockout heading generalised to "⚔
+  Knockouts (Quarter-finals, Round of 16 & Round of 32)". • **Routing:** `lockPrediction` now
+  revalidates `/ro16` in addition to `/ro32`, `/group-stage` and `/`. • **Tests
+  (`scripts/test-scoring.ts`):** added `'qf'` to the case `stage` type and **1 new qf case (39)**
+  duplicating an ro32 ET-winner case to prove the identical knockout scoring. Now **39 cases, all
+  pass**; `npm run build` clean (routes show `/`, `/ro16`, `/ro32`, `/group-stage`, `/admin`,
+  `/admin/ro16`, `/admin/ro32`, `/admin/group-stage`).

@@ -69,7 +69,7 @@ export default function ScoringRules() {
         }}
       >
         <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--gold-300)" }}>
-          ⚔ Knockouts (Round of 16 &amp; Round of 32)
+          ⚔ Knockouts (Quarter-finals, Round of 16 &amp; Round of 32)
         </div>
         <ul
           style={{

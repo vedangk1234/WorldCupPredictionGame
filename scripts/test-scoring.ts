@@ -26,7 +26,7 @@ interface Expect {
 
 interface Case {
   num: number;
-  stage?: 'group' | 'ro32' | 'ro16'; // default 'group'
+  stage?: 'group' | 'ro32' | 'ro16' | 'qf'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -174,6 +174,12 @@ const cases: Case[] = [
   { num: 38, stage: 'ro16', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
     superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(35)],
     expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 3, correctScorers: 0 } },
+
+  // ===================== Knockout (qf) — IDENTICAL rules to ro32 / ro16 =====================
+  // q) (mirrors 23 / 36) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  { num: 39, stage: 'qf', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
 ];
 
 let failures = 0;

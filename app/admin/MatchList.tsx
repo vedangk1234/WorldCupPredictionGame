@@ -113,7 +113,8 @@ export default async function AdminMatchList({
   const now = Date.now();
   const knockout = isKnockout(stage);
   // Per-match round label for a knockout row's metadata line.
-  const roundLabel = stage === "ro16" ? "Round of 16" : "Round of 32";
+  const roundLabel =
+    stage === "qf" ? "Quarter-final" : stage === "ro16" ? "Round of 16" : "Round of 32";
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "40px 24px 80px" }}>

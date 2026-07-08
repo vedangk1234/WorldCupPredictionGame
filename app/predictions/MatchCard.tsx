@@ -93,10 +93,10 @@ interface Props {
   // The logged-in user's own display zone (profiles.timezone, default
   // "Asia/Kolkata"). Display only — the real lock instant is unchanged.
   userTimeZone: string;
-  // 'group' fixtures behave exactly as before; knockouts ('ro32'/'ro16') unlock
-  // the knockout extra-time / penalty prediction flow (CLAUDE.md §2.10). The two
-  // knockout stages behave identically — only the displayed round label differs.
-  stage: "group" | "ro32" | "ro16";
+  // 'group' fixtures behave exactly as before; knockouts ('ro32'/'ro16'/'qf')
+  // unlock the knockout extra-time / penalty prediction flow (CLAUDE.md §2.10).
+  // The knockout stages behave identically — only the displayed round label differs.
+  stage: "group" | "ro32" | "ro16" | "qf";
   teamA: CardTeam;
   teamB: CardTeam;
   underdog: CardTeam | null;
@@ -189,10 +189,11 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
-  // Both knockout stages (ro32/ro16) use the identical ET/penalty flow. The label
-  // below is the only stage-specific difference.
-  const isKnockout = stage === "ro32" || stage === "ro16";
-  const knockoutLabel = stage === "ro16" ? "Round of 16" : "Round of 32";
+  // All knockout stages (ro32/ro16/qf) use the identical ET/penalty flow. The
+  // label below is the only stage-specific difference.
+  const isKnockout = stage === "ro32" || stage === "ro16" || stage === "qf";
+  const knockoutLabel =
+    stage === "qf" ? "Quarter-final" : stage === "ro16" ? "Round of 16" : "Round of 32";
 
   // 2x eligibility (CLAUDE.md "2x tokens"): round-2 AND no underdog. A round-2
   // match WITH an underdog shows an explanatory note instead of the toggle;

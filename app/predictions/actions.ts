@@ -284,9 +284,11 @@ async function writePrediction(
     if (lockErr) return { ok: false, message: lockErr.message };
   }
 
-  // Group fixtures live at /group-stage; ro32 cards at /ro32; ro16 on the home page.
+  // Group fixtures live at /group-stage; ro32 cards at /ro32; ro16 at /ro16; the
+  // Quarter-finals on the home page.
   revalidatePath("/group-stage");
   revalidatePath("/ro32");
+  revalidatePath("/ro16");
   revalidatePath("/");
   return {
     ok: true,
