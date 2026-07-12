@@ -12,6 +12,7 @@ export default async function AdminHome() {
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
       title="Semi-finals"
       navLinks={[
+        { href: "/admin/outrights", label: "Outrights →" },
         { href: "/admin/qf", label: "Quarter-finals →" },
         { href: "/admin/ro16", label: "RO16 Matches →" },
         { href: "/admin/ro32", label: "RO32 Matches →" },

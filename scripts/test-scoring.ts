@@ -77,20 +77,23 @@ const cases: Case[] = [
     predEt: [0, 0], etActual: [0, 0],
     expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 9, correctScorers: 0 } },
 
-  // b) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  // b) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15,
+  //    PLUS the new "name the winner" +3 (FT-draw pred named A via the decisive ET; A won the tie) = 18.
   { num: 23, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 
-  // c) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → FT GD+1, exact FT+5, ET GD+1, exact ET+5, pens+5 = 17.
+  // c) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → FT GD+1, exact FT+5, ET GD+1, exact ET+5, pens+5 = 17,
+  //    PLUS the new "name the winner" +3 (FT-draw pred named A via the pen pick; A won on pens) = 20.
   { num: 24, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 2], etActual: [2, 2], predPen: 1, penWinner: 1,
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 20, correctScorers: 0 } },
 
-  // d) pred 1–1 → 1–1 → pens Arg(1), actual 1–1 / 1–1 / Arg → FT+5+1, ET+5+1, pens+5 = 17 (no ET scorers).
+  // d) pred 1–1 → 1–1 → pens Arg(1), actual 1–1 / 1–1 / Arg → FT+5+1, ET+5+1, pens+5 = 17 (no ET scorers),
+  //    PLUS the new "name the winner" +3 (FT-draw pred named A via the pen pick; A won on pens) = 20.
   { num: 25, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 1,
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 20, correctScorers: 0 } },
 
   // e) ET winner WRONG (pred 1–1 → 2–1 ET, actual 1–1 / 1–2 ET). Wrong final outcome → FT exact, ET exact,
   //    ET winner all FORFEITED (0). Keeps FT GD+1 (FT draw matches) + ET scorer (player 700 real ET goal → +2)
@@ -165,15 +168,15 @@ const cases: Case[] = [
   // ===================== Knockout (ro16) — IDENTICAL rules to ro32 =====================
   // These duplicate ro32 cases (b, c, f1) with stage='ro16' to prove the RO16 stage
   // scores the same knockout way (ET / penalties / contingent bonuses / superstar).
-  // n) (mirrors 23) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  // n) (mirrors 23) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + new "name the winner" +3 (named A, A won) = 18.
   { num: 36, stage: 'ro16', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 
-  // o) (mirrors 24) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → FT GD+1, exact FT+5, ET GD+1, exact ET+5, pens+5 = 17.
+  // o) (mirrors 24) pred 1–1 → 2–2 → pens Arg(1), actual 1–1 / 2–2 / Arg → 17 + new "name the winner" +3 (named A, A won on pens) = 20.
   { num: 37, stage: 'ro16', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 2], etActual: [2, 2], predPen: 1, penWinner: 1,
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 20, correctScorers: 0 } },
 
   // p) (mirrors 27) superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
   //    pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1 (A wins).
@@ -184,10 +187,10 @@ const cases: Case[] = [
     expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 6, correctScorers: 0 } },
 
   // ===================== Knockout (qf) — IDENTICAL rules to ro32 / ro16 =====================
-  // q) (mirrors 23 / 36) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  // q) (mirrors 23 / 36) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + new "name the winner" +3 (named A, A won) = 18.
   { num: 39, stage: 'qf', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 
   // ===================== NEW knockout winner rule (decisive-FT pred, drawn FT, tie decided) =====================
   // A DECISIVE-FT predictor earns the FT winner +3 when the FT was a DRAW but the tie was
@@ -227,16 +230,59 @@ const cases: Case[] = [
     expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 
   // ===================== Knockout (sf) — IDENTICAL rules to ro32 / ro16 / qf =====================
-  // x) (mirrors 23 / 36 / 39) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  // x) (mirrors 23 / 36 / 39) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + new "name the winner" +3 (named A, A won) = 18.
   { num: 46, stage: 'sf', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
-    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 
   // y) NEW decisive-FT-winner rule on sf (mirrors 40): pred 2–0 (side A), FT 1–1, ET 2–1
   //    (A wins in ET) → FT winner +3, everything else 0. Proves the rule fires on 'sf'.
   { num: 47, stage: 'sf', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [0, 0], etActual: [2, 1],
     expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // =========== SECOND knockout winner rule: FT-DRAW predictions "name the winner" ===========
+  // Generalises the +3 to FT-draw predictors: the named side (ET winner if a decisive ET was
+  // predicted, else the penalty pick) winning the tie earns the +3 — INDEPENDENTLY of whether
+  // the final-outcome contingency zeroes their exact bonuses.
+  //
+  // z) hk_goat / mm_2605 case: pred 1–1 / 1–1 (level ET) / pens to B(2); actual FT 1–1, ET 1–2
+  //    (B wins IN ET — no shoot-out). Named B via the pen pick, B won the tie → winner +3. BUT the
+  //    final outcome is WRONG (they predicted pens; the tie ended in ET), so the contingency ZEROES
+  //    FT exact / ET exact / ET winner / pen. Kept: FT GD (0==0 → +1); ET GD is 0 (pred margin 0 ≠
+  //    actual −1). The +3 and the zeroed exacts COEXIST. total = 3 + 1 = 4.
+  { num: 48, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], etActual: [1, 2], predPen: 2, penWinner: null,
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 0 } },
+
+  // aa) Fully-correct pens: pred 1–1 / 1–1 (level ET) / pens to A(1); actual FT 1–1, ET 1–1, pens A.
+  //     Named A via the pen pick, A won → winner +3; final outcome CORRECT → all exacts KEPT
+  //     (FT exact+5, FT GD+1, ET exact+5, ET GD+1, pen+5). total = 3 + 5 + 1 + 5 + 1 + 5 = 20.
+  { num: 49, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 20, correctScorers: 0 } },
+
+  // bb) Decisive-ET pred names the winner (not double-counted): pred 1–1 → 1–2 (B wins in ET);
+  //     actual FT 1–1, ET 1–2 (B wins). Named B, B won → winner +3 (awarded ONCE). Separately the
+  //     ET winner +3 bucket also lands (correct ET winner), plus FT exact+5, FT GD+1, ET exact+5,
+  //     ET GD+1. winnerPts is exactly 3 (NOT 6). total = 3 + 5 + 1 + 3 + 5 + 1 = 18.
+  { num: 50, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 2], etActual: [1, 2],
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
+
+  // cc) Named the LOSER: pred 1–1 → 1–2 (B wins in ET); actual FT 1–1, ET 1–1 → pens won by A(1).
+  //     Named B via the decisive ET, but A won the tie → winner 0. Final outcome wrong → exacts
+  //     zeroed. Kept: FT GD (0==0 → +1). ET GD is 0 (pred margin −1 ≠ actual 0). total = 1.
+  { num: 51, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 2], etActual: [1, 1], predPen: null, penWinner: 1,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 1, correctScorers: 0 } },
+
+  // dd) Named NOBODY: pred 1–1 / 1–1 (level ET) but NO pen pick; actual FT 1–1, ET 1–1 → pens A(1).
+  //     namedWinnerSide → null (level ET + no pen pick) → winner 0. Final outcome wrong (no pen pick)
+  //     → exacts zeroed. Kept: FT GD (+1), ET GD (0==0 → +1). total = 2.
+  { num: 52, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], etActual: [1, 1], predPen: null, penWinner: 1,
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 0 } },
 ];
 
 let failures = 0;

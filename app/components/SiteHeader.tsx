@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/auth-actions";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import { getActiveQuiz } from "@/lib/quiz";
+import { getOutright } from "@/lib/outrights";
 
 // Server component. Reads the current user from the auth cookie; if logged in,
 // loads their profile (name + is_admin) to decide what the right side shows.
@@ -15,6 +16,7 @@ export default async function SiteHeader() {
   let name: string | null = null;
   let isAdmin = false;
   let quizLive = false;
+  let outrightsExist = false;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -26,6 +28,8 @@ export default async function SiteHeader() {
     // Show the "Quiz" link only while a quiz is live (same server-side pattern
     // as the other conditional nav items).
     quizLive = (await getActiveQuiz(supabase)) !== null;
+    // Show the "Outrights" link whenever an outrights competition row exists.
+    outrightsExist = (await getOutright(supabase)) !== null;
   }
 
   return (
@@ -98,6 +102,14 @@ export default async function SiteHeader() {
               >
                 Moments
               </Link>
+              {outrightsExist && (
+                <Link
+                  href="/outrights"
+                  style={{ color: "var(--chalk)", fontWeight: 600, textDecoration: "none" }}
+                >
+                  Outrights
+                </Link>
+              )}
               {isAdmin && (
                 <Link
                   href="/admin"

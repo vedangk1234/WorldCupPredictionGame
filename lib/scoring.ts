@@ -105,6 +105,29 @@ function finalWinnerSide(input: ScoringInput): "A" | "B" | null {
   return null;
 }
 
+// The side ('A' | 'B') the user NAMED as the ultimate tie winner in a knockout,
+// or null if they named nobody. Resolves in the order defined in CLAUDE.md §2.10:
+//   - predicted a DECISIVE FT (predScoreA !== predScoreB) → their FT winner side.
+//   - predicted an FT DRAW → their ET winner side if they predicted a DECISIVE ET
+//     (predEtA !== predEtB); else (a LEVEL ET) their predicted penalty winner
+//     mapped to a side; null if neither an ET winner nor a pen pick was named.
+// Uses the same team-id → side mapping finalWinnerSide() relies on for the pen pick.
+function namedWinnerSide(input: ScoringInput): "A" | "B" | null {
+  if (input.predScoreA !== input.predScoreB) {
+    return input.predScoreA > input.predScoreB ? "A" : "B";
+  }
+  const predEtA = input.predEtA ?? 0;
+  const predEtB = input.predEtB ?? 0;
+  if (predEtA !== predEtB) {
+    return predEtA > predEtB ? "A" : "B";
+  }
+  if (input.predPenWinnerTeamId != null) {
+    if (input.predPenWinnerTeamId === input.teamAId) return "A";
+    if (input.predPenWinnerTeamId === input.teamBId) return "B";
+  }
+  return null;
+}
+
 // Net scorer points for one set of picks against one set of goals: +2 per real
 // goal, −1 per own goal, summed per DISTINCT picked player. `correct` counts how
 // many picked players scored at least one real goal (used for the FT tally).
@@ -140,17 +163,28 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   let winnerPts =
     actMargin !== 0 && sign(predMargin) === sign(actMargin) ? 3 : 0;
 
-  // KNOCKOUT extension: a DECISIVE-FT predictor also earns the FT winner +3 when
-  // the actual FT was a DRAW but the tie was ultimately decided (ET decisive, or
-  // level ET → pens) in favour of the side they backed at full-time. This is the
-  // ONLY thing a decisive-FT knockout predictor gains from the ET/pen resolution
-  // — they never enter the ET track below (that requires a predicted FT draw).
-  // Draw-predictors (predMargin === 0) are excluded, so nothing they earn changes.
-  // Awarded as a normal FT winner hit → folds into winnerPts and sets gotWinner,
-  // counting toward the leaderboard's winners_count like any other winner point.
-  if (knockout && actMargin === 0 && predMargin !== 0) {
-    const predictedSide = predMargin > 0 ? "A" : "B";
-    if (finalWinnerSide(input) === predictedSide) winnerPts = 3;
+  // KNOCKOUT winner rule — "name the winner, get the +3" (see CLAUDE.md §2.10).
+  // In ANY knockout, the winner +3 is awarded — exactly ONCE — when the team the
+  // user NAMED as the ultimate winner is the team that actually WON THE TIE, by any
+  // route. The named side comes from namedWinnerSide() (decisive-FT prediction →
+  // their FT winner; FT-draw prediction → their ET winner if they predicted a
+  // decisive ET, else their penalty pick). The actual tie winner comes from
+  // finalWinnerSide() (pens first, else the ET total). Note: an actual-decisive-FT
+  // knockout (won in 90') is already handled by the FT winner line above — there
+  // finalWinnerSide() returns null, so this block does not fire and never lowers a
+  // correct FT winner from 3.
+  //
+  // This +3 is INDEPENDENT of the FT-draw final-outcome contingency below — it is
+  // NOT one of the four gated bonuses (FT exact / ET exact / ET winner / pen) and
+  // is never zeroed by it. A predictor can have those exact bonuses forfeited for
+  // getting the ending wrong yet still earn this +3 purely for naming the team that
+  // won the tie. Folds into winnerPts and sets gotWinner → counts toward
+  // winners_count like any other winner point.
+  if (knockout) {
+    const namedSide = namedWinnerSide(input);
+    if (namedSide !== null && namedSide === finalWinnerSide(input)) {
+      winnerPts = 3;
+    }
   }
 
   // Goal difference / margin: +1 when the exact FT margin matches. For a draw

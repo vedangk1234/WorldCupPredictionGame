@@ -180,24 +180,42 @@ ro32 applies verbatim to ro16 and qf.
 - **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
   **+1** (includes a correct FT draw, GD 0), FT scorers **+2** per real goal / **−1**
   per own goal, and FT winner **+3** — see the next bullet for the knockout twist.
-- **FT winner +3 (knockout rule — CHANGED mid-tournament):** the FT winner **+3** is
-  awarded when **either** (a) the actual FT is **decisive** AND the predicted FT
-  winner side matches (the group-stage rule), **OR** (b) — when the user predicted a
-  **DECISIVE FT** result, the actual FT ended a **DRAW**, and **the side they backed
-  at full-time went on to win the tie** (ET decisive, or level ET → penalties;
-  resolved by `lib/scoring.ts → finalWinnerSide()`, which reads the pen winner first,
-  else the ET total). A predicted/actual draw on branch (a) still earns no +3.
-  Consequences of branch (b):
-  - This +3 is the **ONLY** thing a **decisive-FT** predictor gains from a match that
-    goes to ET/pens. They **never** enter the ET/penalty scoring track — that unlocks
-    **only** on a **PREDICTED FT draw** (`predScoreA === predScoreB`). No ET exact / ET
-    GD / ET winner / ET scorers / pen points for a decisive-FT prediction, ever.
-  - **FT exact (+5) and FT GD (+1) are unaffected** by branch (b): they still compare
-    the predicted FT scoreline against the **actual FT** score only. A 2–0 prediction
-    against a 1–1 FT earns **neither** the exact nor the GD — just the +3 if 2–0's
-    backed side (A) ultimately wins the tie.
-  - **`got_winner` flips true** and this +3 folds into `winner_pts` exactly like any
-    other winner point, so it counts toward the leaderboard's `winners_count` tally.
+- **FT winner +3 — "NAME THE WINNER, GET THE +3" (knockout rule — CHANGED TWICE
+  mid-tournament):** in **any** knockout match the FT winner **+3** is awarded — exactly
+  **ONCE** per prediction — when **the team the user NAMED as the ultimate winner is the
+  team that actually WON THE TIE**, by any route (90 minutes, extra time, or penalties).
+  Never twice, never stacked across routes.
+  - **The actual tie winner** is `lib/scoring.ts → finalWinnerSide(input)`: the pen
+    winner if there was a shoot-out, else the ET total (else null — which is the
+    actual-decisive-FT case, handled by the plain FT winner line, so this rule doesn't
+    fire there and never lowers a correct FT winner from 3).
+  - **The team the user NAMED** is `lib/scoring.ts → namedWinnerSide(input)`, resolved in
+    order: (1) if they predicted a **DECISIVE FT** (`predScoreA !== predScoreB`) → their
+    **FT winner** side (the original group-stage rule); (2) if they predicted an **FT
+    DRAW** → their **ET winner** side **if** they predicted a decisive ET (`predEtA !==
+    predEtB`), **else** (a level ET) their **`pred_pen_winner_team_id`** mapped to a side;
+    (3) if a draw-predictor named neither an ET winner nor a pen pick → **nobody → no +3**.
+    In short: for an FT-draw prediction, take their ET winner if they named one, otherwise
+    their penalty pick.
+  - The award: `winner_pts = 3` when `namedSide === finalWinnerSide(input)` (and namedSide
+    is non-null). **`got_winner` flips true** and this +3 folds into `winner_pts` exactly
+    like any other winner point, counting toward the leaderboard's `winners_count` tally.
+    No new column, no new points bucket.
+  - **This +3 is INDEPENDENT of the final-outcome contingency below** — it is **NOT** one
+    of the four gated bonuses (FT exact / ET exact / ET winner / pen) and is **never zeroed**
+    by it. A draw-predictor can have those exact bonuses forfeited for getting the ending
+    wrong yet **still earn this +3** purely for naming the team that won the tie. (Concrete
+    case: predict 1–1 / 1–1 / **pens to England**; actual FT 1–1, England win **in ET** — the
+    contingency correctly zeroes the exact bonuses because the ending was wrong, but England
+    won the tie, so the +3 lands. Both are true simultaneously.)
+  - **What is UNCHANGED by this rule:** FT exact (+5) and FT GD (+1) still compare the
+    predicted FT scoreline/margin against the **actual FT** score only (a 2–0 prediction vs
+    a 1–1 FT earns neither — just the +3 if A ultimately wins the tie). A **decisive-FT**
+    predictor still **never enters the ET/penalty scoring track** — that unlocks **only** on
+    a **PREDICTED FT draw** (`predScoreA === predScoreB`); the +3 is the only thing a
+    decisive-FT prediction gains from a tie that goes beyond 90'. The named-winner +3 is
+    awarded ONCE (`winner_pts` is 3, never 6) even when the ET-winner +3 bucket also lands
+    for a correctly-predicted decisive ET — those are separate buckets.
   - Knockout matches carry **no designated underdog** (`underdog_team_id` is null), so
     **underdog scoring is untouched** by any of this.
 - **ET portion — ONLY when the user PREDICTED an FT draw** (`predScoreA ===
@@ -1169,3 +1187,38 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   `winner_pts` 3). Now **47 cases, all pass**; `npm run build` clean (routes show `/`, `/qf`,
   `/ro16`, `/ro32`, `/group-stage`, `/admin`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`,
   `/admin/group-stage`).
+- **2026-07-12 — Knockout winner rule GENERALISED (SECOND mid-tournament change; see §2.10).**
+  The first change (already shipped) gave a **decisive-FT** predictor the FT winner **+3** when
+  their backed side won a tie that went beyond 90'. This second change generalises that to **ALL**
+  knockout predictions: **"name the winner, get the +3"** — in any knockout (`isKnockout(stage)`),
+  the winner **+3** is awarded exactly **once** when the team the user **NAMED** as the ultimate
+  winner is the team that actually **won the tie**, by any route (90', ET, or pens). **Engine +
+  tests ONLY** — no admin, schema, RLS, UI, recompute-script, quiz, leaderboard-view, or
+  group-stage changes. • **`lib/scoring.ts`:** added a pure helper **`namedWinnerSide(input)`** that
+  returns the side ('A'|'B'|null) the user named — decisive-FT prediction → their FT winner;
+  FT-draw prediction → their **ET winner** if they predicted a decisive ET, else their
+  **`pred_pen_winner_team_id`** mapped to a side; null if a draw-predictor named neither. The old
+  decisive-FT-only knockout block (`if (knockout && actMargin === 0 && predMargin !== 0) …`) was
+  **replaced** by `if (knockout) { if (namedSide !== null && namedSide === finalWinnerSide(input))
+  winnerPts = 3; }`. The plain FT winner line above it is unchanged (still handles the
+  actual-decisive-FT / won-in-90' case, where `finalWinnerSide()` returns null so the new block
+  doesn't fire and never lowers a correct FT winner). The **`finalWinnerSide()` helper was reused
+  as-is, not reimplemented.** • **Critically UNCHANGED:** FT exact/GD still compare to the actual
+  FT only; a decisive-FT predictor still never enters the ET/pen track; the ET/pen buckets and their
+  math are untouched; and **the FT-draw final-outcome contingency is untouched** — the new +3 is
+  **NOT** one of its four gated bonuses and is **never zeroed** by it (a draw-predictor whose exact
+  bonuses are forfeited for a wrong ending still earns the +3 for naming the tie winner — the
+  hk_goat / mm_2605 case). The +3 folds into `winner_pts` / `got_winner` → counts toward
+  `winners_count`; `used_2x` doubling and superstar are unchanged. • **Tests
+  (`scripts/test-scoring.ts`):** **CHANGED 7 existing FT-draw cases** whose named side won the tie —
+  they now correctly earn the extra +3 (this is the intended consequence of generalising the rule,
+  not a silent rewrite): **23** (`winner_pts` 0→3, total 15→18), **24** (0→3, 17→20), **25** (0→3,
+  17→20), **36** (0→3, 15→18), **37** (0→3, 17→20), **39** (0→3, 15→18), **46** (0→3, 15→18) —
+  each is a 1–1 FT-draw prediction that named the eventual tie winner via a decisive ET or a pen
+  pick. **ADDED 5 cases (48–52):** 48 = hk_goat (pred 1–1/1–1/pens B, B wins IN ET → +3 **and**
+  exacts zeroed by the contingency, coexisting → total 4); 49 = fully-correct pens (named A, A won
+  on pens → +3 + all exacts, total 20); 50 = decisive-ET pred names winner (not double-counted:
+  `winner_pts` is 3, separate from the ET-winner +3 bucket); 51 = named the loser (pred B via ET,
+  A won on pens → +3 not awarded, `winner_pts` 0); 52 = named nobody (level ET, no pen pick →
+  `winner_pts` 0). The already-present decisive-FT cases (40/44/47) and all group regressions are
+  unaffected. Now **52 cases, all pass**; `npm run build` clean. **Not deployed** (per task).
