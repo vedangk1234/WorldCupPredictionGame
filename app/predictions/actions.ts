@@ -285,10 +285,11 @@ async function writePrediction(
   }
 
   // Group fixtures live at /group-stage; ro32 cards at /ro32; ro16 at /ro16; the
-  // Quarter-finals on the home page.
+  // Quarter-finals at /qf; the Semi-finals on the home page.
   revalidatePath("/group-stage");
   revalidatePath("/ro32");
   revalidatePath("/ro16");
+  revalidatePath("/qf");
   revalidatePath("/");
   return {
     ok: true,

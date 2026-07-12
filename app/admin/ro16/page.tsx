@@ -10,7 +10,7 @@ export default async function AdminRo16() {
       stage="ro16"
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
       title="Round of 16"
-      navLinks={[{ href: "/admin", label: "← Quarter-finals" }]}
+      navLinks={[{ href: "/admin", label: "← Semi-finals" }]}
     />
   );
 }

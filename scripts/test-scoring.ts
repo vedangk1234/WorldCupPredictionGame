@@ -26,7 +26,7 @@ interface Expect {
 
 interface Case {
   num: number;
-  stage?: 'group' | 'ro32' | 'ro16' | 'qf'; // default 'group'
+  stage?: 'group' | 'ro32' | 'ro16' | 'qf' | 'sf'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -224,6 +224,18 @@ const cases: Case[] = [
   //    ET 1–2 (B wins) → winner +3.
   { num: 45, stage: 'ro16', pred: [0, 2], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [0, 0], etActual: [1, 2],
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // ===================== Knockout (sf) — IDENTICAL rules to ro32 / ro16 / qf =====================
+  // x) (mirrors 23 / 36 / 39) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
+  { num: 46, stage: 'sf', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+
+  // y) NEW decisive-FT-winner rule on sf (mirrors 40): pred 2–0 (side A), FT 1–1, ET 2–1
+  //    (A wins in ET) → FT winner +3, everything else 0. Proves the rule fires on 'sf'.
+  { num: 47, stage: 'sf', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [2, 1],
     expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 ];
 

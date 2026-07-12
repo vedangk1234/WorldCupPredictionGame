@@ -1,5 +1,5 @@
+import Link from "next/link";
 import SiteHeader from "@/app/components/SiteHeader";
-import ScoringRules from "@/app/components/ScoringRules";
 import { requireUser } from "@/lib/auth";
 import MatchCard from "@/app/predictions/MatchCard";
 import type {
@@ -13,12 +13,10 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-// Home shows the SEMI FINALS knockout matches for logged-in users (the group
-// stage lives at /group-stage, the Round of 32 at /ro32, the Round of 16 at /ro16,
-// the Quarter-finals at /qf — all behind the navbar hamburger menu). Logged-out
-// users are sent to /login by requireUser(). The match experience is identical to
-// the other stages — MatchCard handles the knockout extra-time / penalty flow for
-// every knockout stage ('sf'/'qf'/'ro16'/'ro32').
+// The Quarter-final knockout matches (moved off the home page, which now shows the
+// Semi-finals). Reached from the navbar hamburger menu. The match experience is
+// identical to the group stage / RO32 / RO16 / SF — MatchCard handles the knockout
+// extra-time / penalty flow when stage='qf'. Logged-out users → /login.
 
 interface JoinedTeam {
   id: number;
@@ -93,10 +91,10 @@ function etPicks(rows: { player_id: number; is_et: boolean }[] | null): number[]
   return (rows ?? []).filter((s) => s.is_et).map((s) => s.player_id);
 }
 
-export default async function Home() {
+export default async function QfPage() {
   const { user, supabase, timeZone } = await requireUser();
 
-  // Semi-final matches, soonest first, with both teams + underdog joined.
+  // Quarter-final matches, soonest first, with both teams + underdog joined.
   const { data: matchesData, error: matchErr } = await supabase
     .from("matches")
     .select(
@@ -107,15 +105,15 @@ export default async function Home() {
        team_b:teams!matches_team_b_id_fkey(id, name, code, flag_url),
        underdog:teams!matches_underdog_team_id_fkey(id, name, code, flag_url)`,
     )
-    // Home is the knockout (Semi-finals) screen — group fixtures live at
-    // /group-stage, the Round of 32 at /ro32, the Round of 16 at /ro16 and the
-    // Quarter-finals at /qf; none must leak into this list.
-    .eq("stage", "sf")
+    // This screen is the Quarter-finals — group fixtures live at /group-stage, the
+    // Round of 32 at /ro32, the Round of 16 at /ro16 and the Semi-finals on the home
+    // page; none must leak into this list.
+    .eq("stage", "qf")
     .order("kickoff_at", { ascending: true });
   const matches = (matchesData ?? []) as unknown as MatchRow[];
 
   // The current user's own predictions (+ backed scorers, FT and ET) across all
-  // sf matches.
+  // qf matches.
   const { data: myPredsData } = await supabase
     .from("predictions")
     .select(
@@ -292,9 +290,21 @@ export default async function Home() {
     <>
       <SiteHeader />
       <main className="preds-layout">
-        <ScoringRules />
+        <Link
+          href="/"
+          style={{
+            display: "inline-block",
+            color: "var(--chalk-dim)",
+            textDecoration: "none",
+            fontSize: 13.5,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          ← Home
+        </Link>
 
-        <div className="stripe-26" style={{ borderRadius: 99, margin: "24px 0 18px", maxWidth: 120 }} />
+        <div className="stripe-26" style={{ borderRadius: 99, marginBottom: 18, maxWidth: 120 }} />
         <p
           style={{
             color: "var(--gold-400)",
@@ -307,7 +317,7 @@ export default async function Home() {
           FIFA WORLD CUP 2026 · KNOCKOUTS
         </p>
         <h1 className="display" style={{ fontSize: 38, lineHeight: 1.05, margin: "8px 0 16px" }}>
-          Semi-finals
+          Quarter-finals
         </h1>
 
         {matchErr && (
@@ -317,7 +327,7 @@ export default async function Home() {
         )}
         {!matchErr && matches.length === 0 && (
           <p style={{ color: "var(--chalk-dim)", marginTop: 20 }}>
-            No knockout matches yet. Check back once the Semi-finals are set.
+            No Quarter-final matches yet. Check back once they&apos;re set.
           </p>
         )}
 
@@ -367,7 +377,7 @@ export default async function Home() {
               <MatchCard
                 key={m.id}
                 matchId={m.id}
-                stage="sf"
+                stage="qf"
                 groupLetter={m.group_letter}
                 matchday={m.matchday}
                 kickoffAt={m.kickoff_at}

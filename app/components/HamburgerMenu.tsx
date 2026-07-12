@@ -59,6 +59,22 @@ export default function HamburgerMenu() {
           }}
         >
           <Link
+            href="/qf"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "block",
+              color: "var(--chalk)",
+              fontWeight: 600,
+              textDecoration: "none",
+              padding: "9px 12px",
+              borderRadius: 7,
+              fontSize: 14.5,
+            }}
+          >
+            QF Matches
+          </Link>
+          <Link
             href="/ro16"
             role="menuitem"
             onClick={() => setOpen(false)}

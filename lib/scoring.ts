@@ -12,7 +12,7 @@
 //
 // STAGE behaviour:
 //   - 'group' → behaves EXACTLY as before. All et/pen fields are IGNORED.
-//   - 'ro32' / 'ro16' / 'qf' → KNOCKOUT stages, scored IDENTICALLY: FT scoring as in
+//   - 'ro32' / 'ro16' / 'qf' / 'sf' → KNOCKOUT stages, scored IDENTICALLY: FT scoring as in
 //     group, PLUS an extra-time (ET) portion that only applies when the user
 //     PREDICTED an FT draw, PLUS a penalty portion when the user predicted a
 //     level ET and the match actually went to pens. Superstar applies on EVERY
@@ -28,14 +28,17 @@ export interface ActualGoal {
 }
 
 // A stage is a KNOCKOUT (ET / penalties / contingent bonuses / superstar-anywhere
-// all apply) when it's 'ro32', 'ro16', OR 'qf'. Group fixtures are never knockouts.
-// Single source of truth — used by the engine and re-used by the admin recompute,
-// the lock action, and the UI so every "is this a knockout?" check stays in sync.
+// all apply) when it's 'ro32', 'ro16', 'qf', OR 'sf'. Group fixtures are never
+// knockouts. Single source of truth — used by the engine and re-used by the admin
+// recompute, the lock action, and the UI so every "is this a knockout?" check stays
+// in sync.
 export function isKnockout(stage: KnockoutOrGroup): boolean {
-  return stage === "ro32" || stage === "ro16" || stage === "qf";
+  return (
+    stage === "ro32" || stage === "ro16" || stage === "qf" || stage === "sf"
+  );
 }
 
-type KnockoutOrGroup = "group" | "ro32" | "ro16" | "qf";
+type KnockoutOrGroup = "group" | "ro32" | "ro16" | "qf" | "sf";
 
 export interface ScoringInput {
   stage: KnockoutOrGroup;

@@ -1131,3 +1131,41 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   re-applies the same `used_2x` doubling as the admin recompute layer, chunking every query in
   1000-row pages. Docs + script only — no engine, admin-panel, leaderboard-view, quiz, or schema
   changes.
+- **Semi-finals added as the new home page; QF moved to its own `/qf` page behind the hamburger
+  menu; knockout scoring extended to cover sf (see §2.10).** Mirrors the earlier QF → `/qf` (was
+  home) move. **Prereq (done in Supabase):** 2 matches inserted with `stage = 'sf'` (France v
+  Spain, England v Argentina; existing stages: `'group'`, `'ro32'`, `'ro16'`, `'qf'`). sf uses the
+  **IDENTICAL** knockout scoring as ro32/ro16/qf (ET / penalties / final-outcome-contingent bonuses
+  / superstar-anywhere / the decisive-FT-winner rule) — the only difference is the displayed round
+  label ("Semi-final"). • **Engine (`lib/scoring.ts`):** `isKnockout(stage)` — the single source of
+  truth for "is this a knockout?" (engine, admin recompute, lock action, `MatchCard`, `ResultForm`,
+  admin `MatchList`) — now returns true for `'ro32' || 'ro16' || 'qf' || 'sf'`; the internal
+  `KnockoutOrGroup` type gained `'sf'`. Group (`'group'`) scoring byte-identical. `lib/types.ts`:
+  `Stage = 'group' | 'ro32' | 'ro16' | 'qf' | 'sf'`. • **Recompute (`app/admin/actions.ts`):**
+  unchanged in logic — `saveAndCompute` uses `isKnockout(stage)` so sf gets the ET/pen treatment
+  automatically; `recomputeMatch` passes `stage` straight into the engine. `revalidateAdmin` now
+  also revalidates `/admin/qf`. • **New user `/qf` page (`app/qf/page.tsx`):** the previous
+  home-page QF rendering moved here **verbatim** (same `MatchCard` experience, knockout prediction
+  flow, superstar, the 1000-row chunked pagination on players/predictions/points/goals, timezone
+  display, reveal, finished collapsibles), filtered to `stage='qf'`, with a "← Home" link at the
+  top; `requireUser()`-gated, `force-dynamic`. • **Home (`app/page.tsx`) = Semi-finals:** same
+  data-loading carried over verbatim but filtered to `stage='sf'`, heading "Semi-finals", cards pass
+  `stage="sf"`; keeps the `<ScoringRules/>` box. • **Hamburger menu (`HamburgerMenu.tsx`):** now has
+  FOUR links — "QF Matches" (→ `/qf`), "RO16 Matches" (→ `/ro16`), "RO32 Matches" (→ `/ro32`) and
+  "Group Stage Matches" (→ `/group-stage`); still far-left, behaviour otherwise unchanged. •
+  **`MatchCard.tsx`:** the `stage` prop type + the local `isKnockout` derivation gained `'sf'`;
+  `knockoutLabel` now yields "Semi-final" for sf. • **Admin:** main `/admin` now lists **sf**
+  ("Semi-finals") with FOUR nav links — "Quarter-finals →" (→ new `app/admin/qf/page.tsx`, "←
+  Semi-finals" back), "RO16 Matches →" (→ `app/admin/ro16/page.tsx`), "RO32 Matches →" (→
+  `app/admin/ro32/page.tsx`) and "Group Stage Matches →". The existing sub-pages' back-links
+  (ro16/ro32/group-stage) were relabelled "← Semi-finals". `AdminMatchList`'s per-stage round label
+  gained "Semi-final"; the `/admin/match/[id]` back-link is stage-aware for all five stages (sf →
+  `/admin`). Admin stays `requireAdmin`-gated and IST. • **`ScoringRules.tsx`** knockout heading
+  generalised to "⚔ Knockouts (Semi-finals, Quarter-finals, Round of 16 & Round of 32)". •
+  **Routing:** `lockPrediction` now revalidates `/qf` in addition to `/ro16`, `/ro32`,
+  `/group-stage` and `/`. • **Tests (`scripts/test-scoring.ts`):** added `'sf'` to the case `stage`
+  type and **2 new sf cases (46–47)** — one ET-winner case (mirrors the qf case, proving identical
+  knockout scoring) and one covering the new decisive-FT-winner rule (pred 2–0, FT 1–1, ET 2–1 →
+  `winner_pts` 3). Now **47 cases, all pass**; `npm run build` clean (routes show `/`, `/qf`,
+  `/ro16`, `/ro32`, `/group-stage`, `/admin`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`,
+  `/admin/group-stage`).

@@ -10,7 +10,7 @@ export default async function AdminGroupStage() {
       stage="group"
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
       title="Group Stage"
-      navLinks={[{ href: "/admin", label: "← Round of 16" }]}
+      navLinks={[{ href: "/admin", label: "← Semi-finals" }]}
     />
   );
 }
