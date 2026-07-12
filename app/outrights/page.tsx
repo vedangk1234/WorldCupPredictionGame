@@ -224,13 +224,22 @@ export default async function OutrightsPage() {
     : [];
 
   // --- Everyone's picks (reveal) — only AFTER the deadline ------------------
+  // One row per user; each pick already carries its flag-prefixed label so the
+  // table cells render straight. `total` stays null until results are finalised
+  // (the Points column + correct/wrong highlighting hang off it later).
   interface RevealPick {
     userId: string;
     name: string;
     username: string;
     isMe: boolean;
     total: number | null;
-    labels: string[];
+    champion: string;
+    runnerUp: string;
+    third: string;
+    boot: string;
+    bootGoals: string;
+    ball: string;
+    glove: string;
   }
   let revealPicks: RevealPick[] = [];
   if (canReveal) {
@@ -274,20 +283,18 @@ export default async function OutrightsPage() {
           username: prof?.username ?? "",
           isMe: p.user_id === user.id,
           total: finalised && result ? scoreOutright(p, result).total_pts : null,
-          labels: [
-            `Champion: ${teamLabel(p.champion_team_id)}`,
-            `Runner-up: ${teamLabel(p.runner_up_team_id)}`,
-            `Third: ${teamLabel(p.third_place_team_id)}`,
-            `Boot: ${playerLabel(p.golden_boot_player_id)}`,
-            `Ball: ${playerLabel(p.golden_ball_player_id)}`,
-            `Glove: ${playerLabel(p.golden_glove_player_id)}`,
-            `Boot goals: ${p.golden_boot_goals ?? "—"}`,
-          ],
+          champion: teamLabel(p.champion_team_id),
+          runnerUp: teamLabel(p.runner_up_team_id),
+          third: teamLabel(p.third_place_team_id),
+          boot: playerLabel(p.golden_boot_player_id),
+          bootGoals: p.golden_boot_goals != null ? `${p.golden_boot_goals}` : "—",
+          ball: playerLabel(p.golden_ball_player_id),
+          glove: playerLabel(p.golden_glove_player_id),
         };
       })
+      // Alphabetical by display name, current user pinned to the top.
       .sort((a, b) => {
         if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
-        if (a.total != null && b.total != null && a.total !== b.total) return b.total - a.total;
         return a.name.localeCompare(b.name);
       });
   }
@@ -471,63 +478,65 @@ export default async function OutrightsPage() {
             {revealPicks.length === 0 ? (
               <p style={{ fontSize: 13, color: "var(--chalk-dim)" }}>No outrights were locked in.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {revealPicks.map((r) => (
-                  <div
-                    key={r.userId}
-                    style={{
-                      background: r.isMe ? "rgba(31,164,99,0.1)" : "var(--pitch-900)",
-                      border: r.isMe
-                        ? "1px solid rgba(31,164,99,0.5)"
-                        : "1px solid var(--pitch-line)",
-                      borderRadius: 12,
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <span style={{ fontSize: 13.5, fontWeight: 700 }}>
-                        {r.name}
-                        {r.username ? (
-                          <span style={{ color: "var(--chalk-dim)", fontWeight: 400 }}>
-                            {" "}
-                            ({r.username})
-                          </span>
-                        ) : null}
-                        {r.isMe ? <span style={{ color: "var(--pitch-500)" }}> · you</span> : null}
-                      </span>
-                      {r.total != null && (
-                        <span
-                          className="tnum"
-                          style={{ fontSize: 14, fontWeight: 800, color: "var(--gold-300)" }}
-                        >
-                          {r.total} pts
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "2px 14px",
-                        marginTop: 6,
-                        fontSize: 12.5,
-                        color: "var(--chalk-dim)",
-                      }}
-                    >
-                      {r.labels.map((l, i) => (
-                        <span key={i}>{l}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              /* Mirrors the per-match prediction leaderboard: bordered/rounded
+                 shell, horizontal-scroll wrapper for mobile, collapsed borders,
+                 uppercase muted headers, current-user row highlight. When results
+                 are finalised, add a "Points" column here + per-cell correct/wrong
+                 tinting keyed off r.total / a per-question scoreOutright result. */
+              <div
+                style={{
+                  border: "1px solid var(--pitch-line)",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ color: "var(--chalk-dim)" }}>
+                        <th style={headCell("left")}>Player</th>
+                        <th style={headCell("left")}>Champion</th>
+                        <th style={headCell("left")}>Runner-up</th>
+                        <th style={headCell("left")}>Third</th>
+                        <th style={headCell("left")}>Boot</th>
+                        <th style={headCell("right")}>Boot Goals</th>
+                        <th style={headCell("left")}>Ball</th>
+                        <th style={headCell("left")}>Glove</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {revealPicks.map((r) => {
+                        const rowBg = r.isMe ? "rgba(31,164,99,0.12)" : "transparent";
+                        return (
+                          <tr
+                            key={r.userId}
+                            style={{ background: rowBg, borderTop: "1px solid var(--pitch-line)" }}
+                          >
+                            <td style={{ ...bodyCell, textAlign: "left" }}>
+                              <span style={{ fontWeight: 600 }}>{r.name}</span>
+                              {r.username ? (
+                                <span style={{ color: "var(--chalk-dim)", fontWeight: 400 }}>
+                                  {" "}
+                                  ({r.username})
+                                </span>
+                              ) : null}
+                              {r.isMe ? (
+                                <span style={{ color: "var(--pitch-500)", fontWeight: 600 }}> · you</span>
+                              ) : null}
+                            </td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.champion}</td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.runnerUp}</td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.third}</td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.boot}</td>
+                            <td className="tnum" style={bodyCell}>{r.bootGoals}</td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.ball}</td>
+                            <td style={{ ...bodyCell, textAlign: "left" }}>{r.glove}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -535,6 +544,25 @@ export default async function OutrightsPage() {
       </main>
     </>
   );
+}
+
+// Table cell styling lifted from the per-match prediction leaderboard so both
+// boards read identically (padding, muted uppercase headers, tabular figures).
+const bodyCell: React.CSSProperties = {
+  padding: "8px 8px",
+  textAlign: "right",
+  whiteSpace: "nowrap",
+  fontSize: 13,
+};
+
+function headCell(align: "left" | "right"): React.CSSProperties {
+  return {
+    ...bodyCell,
+    textAlign: align,
+    fontSize: 11,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+  };
 }
 
 function BackHome() {
