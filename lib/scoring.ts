@@ -85,6 +85,23 @@ export interface ScoringResult {
 
 const sign = (n: number): number => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
+// The ultimate winning side ('A' | 'B') of a DECIDED knockout tie: penalties
+// decide first (map the pen winner's team id → side, the same id→side mapping the
+// penalty scoring relies on), otherwise the ET total decides. Returns null only if
+// somehow still level — a guard; a finished knockout should never hit this.
+function finalWinnerSide(input: ScoringInput): "A" | "B" | null {
+  if (input.penWinnerTeamId != null) {
+    if (input.penWinnerTeamId === input.teamAId) return "A";
+    if (input.penWinnerTeamId === input.teamBId) return "B";
+    return null;
+  }
+  const etA = input.etScoreA ?? 0;
+  const etB = input.etScoreB ?? 0;
+  if (etA > etB) return "A";
+  if (etB > etA) return "B";
+  return null;
+}
+
 // Net scorer points for one set of picks against one set of goals: +2 per real
 // goal, −1 per own goal, summed per DISTINCT picked player. `correct` counts how
 // many picked players scored at least one real goal (used for the FT tally).
@@ -117,8 +134,21 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
 
   // Winner: +3 only in a decisive FT match where the predicted winning side
   // matches. A draw never awards the winner point.
-  const winnerPts =
+  let winnerPts =
     actMargin !== 0 && sign(predMargin) === sign(actMargin) ? 3 : 0;
+
+  // KNOCKOUT extension: a DECISIVE-FT predictor also earns the FT winner +3 when
+  // the actual FT was a DRAW but the tie was ultimately decided (ET decisive, or
+  // level ET → pens) in favour of the side they backed at full-time. This is the
+  // ONLY thing a decisive-FT knockout predictor gains from the ET/pen resolution
+  // — they never enter the ET track below (that requires a predicted FT draw).
+  // Draw-predictors (predMargin === 0) are excluded, so nothing they earn changes.
+  // Awarded as a normal FT winner hit → folds into winnerPts and sets gotWinner,
+  // counting toward the leaderboard's winners_count like any other winner point.
+  if (knockout && actMargin === 0 && predMargin !== 0) {
+    const predictedSide = predMargin > 0 ? "A" : "B";
+    if (finalWinnerSide(input) === predictedSide) winnerPts = 3;
+  }
 
   // Goal difference / margin: +1 when the exact FT margin matches. For a draw
   // this is 0 === 0, so a correctly-predicted draw earns it.

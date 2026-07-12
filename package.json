@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:scoring": "tsx scripts/test-scoring.ts",
-    "test:quiz": "tsx scripts/test-quiz.ts"
+    "test:quiz": "tsx scripts/test-quiz.ts",
+    "recompute:ko": "tsx scripts/recompute-knockouts.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

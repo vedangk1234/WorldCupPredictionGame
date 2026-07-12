@@ -178,9 +178,28 @@ knockout?" check is needed (engine, admin recompute, lock action, `MatchCard`,
 ro32 applies verbatim to ro16 and qf.
 
 - **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
-  **+1** (includes a correct FT draw, GD 0), FT winner **+3** (only if FT is
-  decisive AND the predicted FT winner side matches — a predicted/actual draw earns
-  no +3), FT scorers **+2** per real goal / **−1** per own goal.
+  **+1** (includes a correct FT draw, GD 0), FT scorers **+2** per real goal / **−1**
+  per own goal, and FT winner **+3** — see the next bullet for the knockout twist.
+- **FT winner +3 (knockout rule — CHANGED mid-tournament):** the FT winner **+3** is
+  awarded when **either** (a) the actual FT is **decisive** AND the predicted FT
+  winner side matches (the group-stage rule), **OR** (b) — when the user predicted a
+  **DECISIVE FT** result, the actual FT ended a **DRAW**, and **the side they backed
+  at full-time went on to win the tie** (ET decisive, or level ET → penalties;
+  resolved by `lib/scoring.ts → finalWinnerSide()`, which reads the pen winner first,
+  else the ET total). A predicted/actual draw on branch (a) still earns no +3.
+  Consequences of branch (b):
+  - This +3 is the **ONLY** thing a **decisive-FT** predictor gains from a match that
+    goes to ET/pens. They **never** enter the ET/penalty scoring track — that unlocks
+    **only** on a **PREDICTED FT draw** (`predScoreA === predScoreB`). No ET exact / ET
+    GD / ET winner / ET scorers / pen points for a decisive-FT prediction, ever.
+  - **FT exact (+5) and FT GD (+1) are unaffected** by branch (b): they still compare
+    the predicted FT scoreline against the **actual FT** score only. A 2–0 prediction
+    against a 1–1 FT earns **neither** the exact nor the GD — just the +3 if 2–0's
+    backed side (A) ultimately wins the tie.
+  - **`got_winner` flips true** and this +3 folds into `winner_pts` exactly like any
+    other winner point, so it counts toward the leaderboard's `winners_count` tally.
+  - Knockout matches carry **no designated underdog** (`underdog_team_id` is null), so
+    **underdog scoring is untouched** by any of this.
 - **ET portion — ONLY when the user PREDICTED an FT draw** (`predScoreA ===
   predScoreB`; that's the signal they expected ET): exact ET **+5** (predicted ET
   total == actual ET total), ET GD **+1** (predicted ET margin == actual ET margin —
@@ -1094,3 +1113,21 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   duplicating an ro32 ET-winner case to prove the identical knockout scoring. Now **39 cases, all
   pass**; `npm run build` clean (routes show `/`, `/ro16`, `/ro32`, `/group-stage`, `/admin`,
   `/admin/ro16`, `/admin/ro32`, `/admin/group-stage`).
+- **2026-07-12 — Knockout FT-winner rule CHANGED mid-tournament (see §2.10; engine already
+  updated).** A **decisive-FT** predictor now also earns the FT winner **+3** when the actual FT
+  ended a **draw** but the side they backed at full-time ultimately **won the tie** (ET decisive,
+  or level ET → penalties), resolved by `lib/scoring.ts → finalWinnerSide()`. Previously such a
+  prediction earned nothing from the ET/pen resolution. This +3 is the ONLY thing a decisive-FT
+  predictor gains from a match that goes beyond 90' — they never enter the ET/penalty track (that
+  still unlocks only on a PREDICTED FT draw); FT exact (+5) and FT GD (+1) still compare against
+  the actual FT only (a 2–0 vs a 1–1 FT earns neither); `got_winner` flips true and counts toward
+  `winners_count`; underdog scoring is untouched (knockouts have no underdog). The FT-draw-only
+  final-outcome contingency is unchanged. **CLAUDE.md §2.10 was documenting the OLD rule** — this
+  entry + the rewritten FT-portion / new FT-winner bullet fix that so future sessions don't "revert"
+  it. **The already-played knockout matches were recomputed retroactively under the new rule** via
+  the new `scripts/recompute-knockouts.ts` (`npm run recompute:ko`, dry-run by default, `--commit`
+  to write), which targets the 8 finished level-at-FT knockout matches (ids 74, 75, 82, 86, 88, 96,
+  99, 100), reruns every LOCKED prediction through the unchanged pure engine (`scorePrediction`) and
+  re-applies the same `used_2x` doubling as the admin recompute layer, chunking every query in
+  1000-row pages. Docs + script only — no engine, admin-panel, leaderboard-view, quiz, or schema
+  changes.

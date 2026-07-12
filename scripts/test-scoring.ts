@@ -100,15 +100,21 @@ const cases: Case[] = [
     expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 
   // f1) Superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
-  //     pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1. FT all wrong → 0; superstar +3.
+  //     pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1 (A wins).
+  //     UPDATED for the new knockout winner rule: this is a DECISIVE-FT prediction (side A)
+  //     against a DRAWN FT that was ultimately decided in A's favour (ET 2–1), so the FT
+  //     winner +3 is now awarded (was 0 under the old rule). FT gd/exact still 0; superstar +3.
+  //     total 3 + 3 = 6.
   { num: 27, stage: 'ro32', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
     superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(35)],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 3, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 6, correctScorers: 0 } },
 
   // f2) Superstar (player 35) picked as FT scorer, NEVER scores anywhere → −3.
+  //     UPDATED for the new knockout winner rule: decisive-FT pred (side A) vs drawn FT
+  //     ultimately won by A (ET 2–1) → FT winner +3 (was 0). Superstar −3. total 3 − 3 = 0.
   { num: 28, stage: 'ro32', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
     superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(900)],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: -3, totalPts: -3, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: -3, totalPts: 0, correctScorers: 0 } },
 
   // g) Group-stage match with et/pen fields present but must be IGNORED → identical to today.
   { num: 29, stage: 'group', pred: [2, 1], actual: [2, 1], goals: [], picks: [], underdog: null,
@@ -170,16 +176,55 @@ const cases: Case[] = [
     expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 17, correctScorers: 0 } },
 
   // p) (mirrors 27) superstar (player 35) picked as FT scorer, scores ONLY in ET → +3 (scored anywhere).
-  //    pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1. FT all wrong → 0; superstar +3.
+  //    pred FT 2–1 decisive (no ET portion), actual FT 1–1 / ET 2–1 (A wins).
+  //    UPDATED for the new knockout winner rule (same as case 27, on ro16): decisive-FT pred
+  //    (side A) vs drawn FT ultimately won by A → FT winner +3 (was 0); superstar +3. total 6.
   { num: 38, stage: 'ro16', pred: [2, 1], actual: [1, 1], goals: [], picks: [35], underdog: null,
     superstars: [35], predEt: [0, 0], etActual: [2, 1], etGoals: [n(35)],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 3, correctScorers: 0 } },
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 3, totalPts: 6, correctScorers: 0 } },
 
   // ===================== Knockout (qf) — IDENTICAL rules to ro32 / ro16 =====================
   // q) (mirrors 23 / 36) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → FT GD+1, exact FT+5, ET winner+3, exact ET+5, ET GD+1 = 15.
   { num: 39, stage: 'qf', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
     expect: { winnerPts: 0, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 15, correctScorers: 0 } },
+
+  // ===================== NEW knockout winner rule (decisive-FT pred, drawn FT, tie decided) =====================
+  // A DECISIVE-FT predictor earns the FT winner +3 when the FT was a DRAW but the tie was
+  // ultimately decided (ET decisive, or level ET → pens) in favour of the side they backed at FT.
+  // They never enter the ET track (that needs a predicted FT draw), so this +3 is their ONLY gain:
+  // exact FT and FT GD stay 0 (2–0 ≠ 1–1 and margin 2 ≠ 0), and all ET/pen buckets stay 0.
+  // r) pred 2–0 (side A), FT 1–1, ET 2–1 (A wins in ET) → winner +3. gotWinner true.
+  { num: 40, stage: 'ro32', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [2, 1],
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // s) pred 2–0 (side A), FT 1–1, ET 1–2 (B wins in ET) → wrong ultimate winner → winner 0.
+  { num: 41, stage: 'ro32', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [1, 2],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // t) pred 2–0 (side A), FT 1–1, ET 1–1 → pens won by team A(1) → A decided the tie → winner +3.
+  //    (Decisive-FT pred → no ET track, so the +5 pen bonus is NOT awarded; only the winner +3.)
+  { num: 42, stage: 'ro32', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [1, 1], penWinner: 1,
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // u) pred 2–0 (side A), FT 1–1, ET 1–1 → pens won by team B(2) → wrong ultimate winner → winner 0.
+  { num: 43, stage: 'ro32', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [1, 1], penWinner: 2,
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // v) GROUP stage: pred 2–0, actual 1–1 (draw). New rule is gated behind isKnockout → does NOT
+  //    fire; a drawn group match awards no winner point. Stays winner 0.
+  { num: 44, stage: 'group', pred: [2, 0], actual: [1, 1], goals: [], picks: [], underdog: null,
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // w) Predicted side B path (predMargin < 0) + ro16 scope: pred 0–2 (side B), FT 1–1,
+  //    ET 1–2 (B wins) → winner +3.
+  { num: 45, stage: 'ro16', pred: [0, 2], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [0, 0], etActual: [1, 2],
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 ];
 
 let failures = 0;
