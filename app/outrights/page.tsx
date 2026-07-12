@@ -138,6 +138,11 @@ export default async function OutrightsPage() {
   // Editable iff the user hasn't locked AND the deadline hasn't passed.
   const editable = !(myPred?.locked ?? false) && !locked_at_passed;
 
+  // Reveal rule (mirrors the match prediction pages): the all-users table shows
+  // as soon as the CURRENT USER has LOCKED their own outright, OR the deadline
+  // has passed (in which case everyone sees it regardless). RLS enforces the same.
+  const canReveal = (myPred?.locked ?? false) || locked_at_passed;
+
   // --- The seven questions, for the read-only / results views ---------------
   interface QDef {
     n: number;
@@ -228,14 +233,24 @@ export default async function OutrightsPage() {
     labels: string[];
   }
   let revealPicks: RevealPick[] = [];
-  if (locked_at_passed) {
-    const { data: allPreds } = await supabase
-      .from("outright_predictions")
-      .select(
-        "id, user_id, outrights_id, champion_team_id, runner_up_team_id, third_place_team_id, golden_boot_player_id, golden_ball_player_id, golden_glove_player_id, golden_boot_goals, locked, locked_at",
-      )
-      .eq("outrights_id", outright.id);
-    const preds = (allPreds ?? []) as OutrightPrediction[];
+  if (canReveal) {
+    // Chunked pagination (PostgREST caps unbounded reads at 1000 rows).
+    const preds: OutrightPrediction[] = [];
+    const CHUNK = 1000;
+    for (let from = 0; ; from += CHUNK) {
+      const { data: page } = await supabase
+        .from("outright_predictions")
+        .select(
+          "id, user_id, outrights_id, champion_team_id, runner_up_team_id, third_place_team_id, golden_boot_player_id, golden_ball_player_id, golden_glove_player_id, golden_boot_goals, locked, locked_at",
+        )
+        .eq("outrights_id", outright.id)
+        .eq("locked", true)
+        .order("id", { ascending: true })
+        .range(from, from + CHUNK - 1);
+      const rows = (page ?? []) as OutrightPrediction[];
+      preds.push(...rows);
+      if (rows.length < CHUNK) break;
+    }
     const userIds = Array.from(new Set(preds.map((p) => p.user_id)));
     const profileById = new Map<string, { name: string; username: string }>();
     if (userIds.length > 0) {
@@ -430,8 +445,25 @@ export default async function OutrightsPage() {
           </div>
         )}
 
-        {/* Everyone's picks — revealed only after the deadline. */}
-        {locked_at_passed && (
+        {/* Everyone's picks — revealed once the user has locked (or the deadline
+            has passed). Until then, hidden behind a lock-to-reveal hint. */}
+        {!canReveal ? (
+          <div style={{ marginTop: 28 }}>
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "var(--chalk-dim)",
+                fontWeight: 600,
+                background: "var(--pitch-900)",
+                border: "1px solid var(--pitch-line)",
+                borderRadius: 10,
+                padding: "12px 14px",
+              }}
+            >
+              🔒 Lock your picks to see what everyone else predicted.
+            </p>
+          </div>
+        ) : (
           <div style={{ marginTop: 28 }}>
             <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 12px" }}>
               Everyone&apos;s outrights ({revealPicks.length})
