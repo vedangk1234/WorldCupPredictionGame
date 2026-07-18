@@ -26,7 +26,7 @@ interface Expect {
 
 interface Case {
   num: number;
-  stage?: 'group' | 'ro32' | 'ro16' | 'qf' | 'sf'; // default 'group'
+  stage?: 'group' | 'ro32' | 'ro16' | 'qf' | 'sf' | 'third'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -142,28 +142,32 @@ const cases: Case[] = [
     expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 1 } },
 
   // --- Same player in BOTH FT and ET scorer lists: scoring is PHASE-STRICT. ---
-  // Player 700 (non-superstar). FT pred draw 1–1 → actual FT 1–0 (decisive, so FT
-  // winner/gd/exact all 0). Predicted decisive ET 2–1 but actual ET 1–2 (wrong ET
-  // winner ⇒ all ET winner/gd/exact zeroed) — this isolates the scorer points.
-  // j) picked in BOTH, scores 1 FT goal + 1 ET goal → +2 (FT) +2 (ET) = +4.
-  { num: 32, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [n(700)], picks: [700], underdog: null,
-    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 1 } },
+  // Player 700 (non-superstar). To exercise the ET scorer track, ET must have been
+  // ACTUALLY PLAYED — so the actual FT is a genuine DRAW (0–0) and the ET totals are
+  // populated (an FT-draw prediction + a drawn FT is the only realistic way in). FT
+  // pred draw 1–1 vs actual 0–0 → FT exact 0, FT GD +1 (0==0, UNAVOIDABLE baseline),
+  // FT winner 0. Predicted a DECISIVE ET 2–1 but actual ET 0–1 (wrong ET winner ⇒ ET
+  // winner/GD/exact all 0, named side A ≠ actual winner B ⇒ knockout winner +3 not
+  // awarded) — this isolates the scorer points on top of the FT-GD +1 baseline.
+  // j) picked in BOTH, scores 1 FT goal + 1 ET goal → +2 (FT) +2 (ET), + FT GD 1 = 5.
+  { num: 32, stage: 'ro32', pred: [1, 1], actual: [0, 0], goals: [n(700)], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [0, 1], etGoals: [n(700)], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 5, correctScorers: 1 } },
 
-  // k) picked in BOTH, scores ONLY 1 FT goal → FT pick pays +2, ET pick pays 0 → +2 (NOT +4).
-  { num: 33, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [n(700)], picks: [700], underdog: null,
-    predEt: [2, 1], etActual: [1, 2], etGoals: [], etPicks: [700],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 1 } },
+  // k) picked in BOTH, scores ONLY 1 FT goal → FT pick pays +2, ET pick pays 0, + FT GD 1 = 3 (NOT 5).
+  { num: 33, stage: 'ro32', pred: [1, 1], actual: [0, 0], goals: [n(700)], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [0, 1], etGoals: [], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 2, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 1 } },
 
-  // l) picked in FT ONLY, scores only in ET → FT pick doesn't pay for an ET goal → 0.
-  { num: 34, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [], picks: [700], underdog: null,
-    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+  // l) picked in FT ONLY, scores only in ET → FT pick doesn't pay for an ET goal → 0, + FT GD 1 = 1.
+  { num: 34, stage: 'ro32', pred: [1, 1], actual: [0, 0], goals: [], picks: [700], underdog: null,
+    predEt: [2, 1], etActual: [0, 1], etGoals: [n(700)], etPicks: [],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 1, correctScorers: 0 } },
 
-  // m) picked in ET ONLY, scores only in ET → ET pick pays +2.
-  { num: 35, stage: 'ro32', pred: [1, 1], actual: [1, 0], goals: [], picks: [], underdog: null,
-    predEt: [2, 1], etActual: [1, 2], etGoals: [n(700)], etPicks: [700],
-    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 0 } },
+  // m) picked in ET ONLY, scores only in ET → ET pick pays +2, + FT GD 1 = 3.
+  { num: 35, stage: 'ro32', pred: [1, 1], actual: [0, 0], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [0, 1], etGoals: [n(700)], etPicks: [700],
+    expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 2, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
 
   // ===================== Knockout (ro16) — IDENTICAL rules to ro32 =====================
   // These duplicate ro32 cases (b, c, f1) with stage='ro16' to prove the RO16 stage
@@ -283,6 +287,75 @@ const cases: Case[] = [
   { num: 52, stage: 'ro32', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [1, 1], etActual: [1, 1], predPen: null, penWinner: 1,
     expect: { winnerPts: 0, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 2, correctScorers: 0 } },
+
+  // =========== THIRD knockout winner rule: "won by ANY route" incl. a decisive 90' ===========
+  // The +3 now fires when the NAMED side wins by ANY route, including a match decided in
+  // regulation (no ET, no pens). actualWinnerSide() falls through to the FT score. NO etActual
+  // is passed on these "won in 90'" cases because ET was NOT played — and the ET-track gate now
+  // requires ET to have been ACTUALLY played (FT level AND et_score populated), so NONE of the
+  // ET components (ET exact / ET GD / ET winner / ET scorers) or penalties can score on a match
+  // decided in 90 minutes. (Previously a level-ET FT-draw prediction wrongly earned ET GD +1 by
+  // matching a defaulted 0–0 actual ET; that leak is now fixed.) The winner +3 is unaffected —
+  // it lives outside the ET block.
+  //
+  // ee) mm_2605 case: FT-DRAW pred 1–1, named B via the PEN pick (level ET 1–1 → pens B);
+  //     actual FT 0–2 — B won by TWO in 90' (no ET, no pens). Named B, B won the match →
+  //     winner +3 (was 0 under the shipped rule, which paid nothing for a 90' result). FT GD 0
+  //     (margin 0 ≠ −2). ET GD is now 0 (ET was not played — no ET-track scoring). total = 3.
+  { num: 53, stage: 'ro32', pred: [1, 1], actual: [0, 2], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], predPen: 2,
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // ff) FT-DRAW pred 1–1, named A via a DECISIVE-ET pick (predEt 2–1); actual FT 0–2 — the
+  //     OTHER team (B) won in 90'. Named A, A did NOT win → winner 0. Decisive-ET pred ⇒ no
+  //     ET GD (pred margin 1 ≠ actual 0). total = 0.
+  { num: 54, stage: 'ro32', pred: [1, 1], actual: [0, 2], goals: [], picks: [], underdog: null,
+    predEt: [2, 1],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // gg) FT-DRAW pred 1–1, LEVEL ET (1–1) but NO pen pick; actual FT 0–2 won in 90'.
+  //     namedWinnerSide → null (level ET + no pen pick) → winner 0. ET was NOT played, so ET GD
+  //     no longer leaks → 0. total = 0.
+  { num: 55, stage: 'ro32', pred: [1, 1], actual: [0, 2], goals: [], picks: [], underdog: null,
+    predEt: [1, 1],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // hh) DECISIVE-FT pred 2–0 won cleanly in 90' (actual 3–1, no ET/pen data at all). The plain
+  //     FT winner line awards +3; the knockout block re-affirms it (named A === actual A) WITHOUT
+  //     doubling — winnerPts is a flat 3, not 6. FT GD +1 (margin 2 == 2). total = 3 + 1 = 4.
+  { num: 56, stage: 'ro32', pred: [2, 0], actual: [3, 1], goals: [], picks: [], underdog: null,
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 4, correctScorers: 0 } },
+
+  // =========== ET-track gate: no ET points when extra time was NOT actually played ===========
+  // A match decided in 90 minutes (et_score null) must score ZERO across EVERY ET component and
+  // penalties, for ANY prediction, regardless of what ET was predicted. Before the fix these
+  // level-ET FT-draw predictions leaked ET GD +1 by matching a defaulted 0–0 actual ET.
+  //
+  // ii) FT-draw pred 0–0, LEVEL ET 0–0 (named nobody); actual FT 1–0 — A won in 90' (no ET).
+  //     ET was not played → ET GD 0 (was +1). namedWinnerSide → null → winner 0. total = 0.
+  { num: 57, stage: 'ro32', pred: [0, 0], actual: [1, 0], goals: [], picks: [], underdog: null,
+    predEt: [0, 0],
+    expect: { winnerPts: 0, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 0, correctScorers: 0 } },
+
+  // jj) FT-draw pred 1–1, level ET 1–1, predicted pens to A(1); actual FT 2–1 — A won in 90'
+  //     (no ET/pens). ET not played → ET GD, exact ET, pen all 0. Named A via the pen pick and
+  //     A won the match → winner +3 (unaffected by the ET gate). total = 3.
+  { num: 58, stage: 'ro32', pred: [1, 1], actual: [2, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], predPen: 1,
+    expect: { winnerPts: 3, gdPts: 0, exactPts: 0, scorerPts: 0, etWinnerPts: 0, etGdPts: 0, etExactPts: 0, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 3, correctScorers: 0 } },
+
+  // kk) Sanity: ET-track STILL scores normally when ET WAS played. FT-draw pred 1–1 → level ET
+  //     1–1 → pens A(1); actual FT 1–1, ET 1–1 (played), pens A. Full award kept (mirrors 49).
+  { num: 59, stage: 'ro16', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [1, 1], etActual: [1, 1], predPen: 1, penWinner: 1,
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 0, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 5, superstarPts: 0, totalPts: 20, correctScorers: 0 } },
+
+  // ===================== Knockout (third) — IDENTICAL rules to ro32 / ro16 / qf / sf =====================
+  // (mirrors 46) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + "name the winner" +3 (named A, A won) = 18.
+  // Proves the knockout scoring fires identically on the Third-place match ('third').
+  { num: 60, stage: 'third', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 ];
 
 let failures = 0;

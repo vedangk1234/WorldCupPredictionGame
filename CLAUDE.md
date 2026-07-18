@@ -180,15 +180,24 @@ ro32 applies verbatim to ro16 and qf.
 - **FT portion (ALWAYS, same numbers as the group rules):** exact FT **+5**, FT GD
   **+1** (includes a correct FT draw, GD 0), FT scorers **+2** per real goal / **−1**
   per own goal, and FT winner **+3** — see the next bullet for the knockout twist.
-- **FT winner +3 — "NAME THE WINNER, GET THE +3" (knockout rule — CHANGED TWICE
+- **FT winner +3 — "NAME THE WINNER, GET THE +3" (knockout rule — CHANGED THREE TIMES
   mid-tournament):** in **any** knockout match the FT winner **+3** is awarded — exactly
   **ONCE** per prediction — when **the team the user NAMED as the ultimate winner is the
-  team that actually WON THE TIE**, by any route (90 minutes, extra time, or penalties).
-  Never twice, never stacked across routes.
-  - **The actual tie winner** is `lib/scoring.ts → finalWinnerSide(input)`: the pen
-    winner if there was a shoot-out, else the ET total (else null — which is the
-    actual-decisive-FT case, handled by the plain FT winner line, so this rule doesn't
-    fire there and never lowers a correct FT winner from 3).
+  team that actually WON THE MATCH**, by **any route — 90 minutes, extra time, OR
+  penalties**. Never twice, never stacked across routes.
+  - **The actual match winner** is `lib/scoring.ts → actualWinnerSide(input)`, resolved in
+    strict priority: (1) the **penalty** winner if there was a shoot-out; else (2) the **ET
+    total** if ET was actually **played** (both `et_score_a/b` non-null AND unequal); else
+    (3) the **FT score** if it was decisive (won in 90'). Returns null only if genuinely
+    still level with no resolution (a guard a finished knockout should never hit). **This
+    REPLACES the old `finalWinnerSide()`**, which ignored a decisive FT and returned null
+    for a 90' result — that helper had no other dependents (the ET/penalty scoring uses its
+    own inline `etA/etB/pen` resolution, not it), so it was removed. A knockout decided in
+    regulation now yields a winning side, so the rule fires for 90' results too (the third
+    change). For a decisive-FT predictor whose team won in 90', the plain FT winner line
+    already set +3 and this block re-affirms the **same** side — it never double-awards
+    (`winner_pts` is a flat 3, never 6) and, only ever SETTING 3, never lowers a correct FT
+    winner.
   - **The team the user NAMED** is `lib/scoring.ts → namedWinnerSide(input)`, resolved in
     order: (1) if they predicted a **DECISIVE FT** (`predScoreA !== predScoreB`) → their
     **FT winner** side (the original group-stage rule); (2) if they predicted an **FT
@@ -197,7 +206,7 @@ ro32 applies verbatim to ro16 and qf.
     (3) if a draw-predictor named neither an ET winner nor a pen pick → **nobody → no +3**.
     In short: for an FT-draw prediction, take their ET winner if they named one, otherwise
     their penalty pick.
-  - The award: `winner_pts = 3` when `namedSide === finalWinnerSide(input)` (and namedSide
+  - The award: `winner_pts = 3` when `namedSide === actualWinnerSide(input)` (and namedSide
     is non-null). **`got_winner` flips true** and this +3 folds into `winner_pts` exactly
     like any other winner point, counting toward the leaderboard's `winners_count` tally.
     No new column, no new points bucket.
@@ -210,22 +219,33 @@ ro32 applies verbatim to ro16 and qf.
     won the tie, so the +3 lands. Both are true simultaneously.)
   - **What is UNCHANGED by this rule:** FT exact (+5) and FT GD (+1) still compare the
     predicted FT scoreline/margin against the **actual FT** score only (a 2–0 prediction vs
-    a 1–1 FT earns neither — just the +3 if A ultimately wins the tie). A **decisive-FT**
+    a 1–1 FT earns neither — just the +3 if A ultimately wins the match). A **decisive-FT**
     predictor still **never enters the ET/penalty scoring track** — that unlocks **only** on
     a **PREDICTED FT draw** (`predScoreA === predScoreB`); the +3 is the only thing a
-    decisive-FT prediction gains from a tie that goes beyond 90'. The named-winner +3 is
+    decisive-FT prediction gains when a match it thought would be decided in 90' instead
+    goes to ET/pens (and, symmetrically, an FT-draw predictor can now earn the +3 when a
+    match they thought would go beyond 90' is instead decided in regulation). The named-winner +3 is
     awarded ONCE (`winner_pts` is 3, never 6) even when the ET-winner +3 bucket also lands
     for a correctly-predicted decisive ET — those are separate buckets.
   - Knockout matches carry **no designated underdog** (`underdog_team_id` is null), so
     **underdog scoring is untouched** by any of this.
-- **ET portion — ONLY when the user PREDICTED an FT draw** (`predScoreA ===
-  predScoreB`; that's the signal they expected ET): exact ET **+5** (predicted ET
-  total == actual ET total), ET GD **+1** (predicted ET margin == actual ET margin —
-  a correctly-predicted **level** ET earns its own +1, *separate* from the FT-draw
-  GD), ET winner **+3** (only if actual ET decisive AND predicted ET winner side
-  matches), ET scorers **+2/−1** (ET picks against ET goals). A wrong ET winner ⇒ no
-  ET +3 and no exact ET +5, but the ET GD (if it matches) and ET scorer points are
-  kept. ET totals **include** the FT goals.
+- **ET portion — ONLY when the user PREDICTED an FT draw AND extra time was ACTUALLY
+  PLAYED.** The prediction gate is `predScoreA === predScoreB` (the signal they
+  expected ET). The *reality* gate is `etWasPlayed` = the match was **LEVEL at FT**
+  (`actualScoreA === actualScoreB`) **AND** the actual ET totals are populated
+  (`et_score_a`/`et_score_b` non-null). **A match decided in 90 minutes scores ZERO
+  across EVERY ET component (ET exact, ET GD, ET winner, ET scorers) and penalties,
+  for EVERYONE, regardless of what they predicted** — there was no extra time to
+  score. (Without the reality gate, a level-ET prediction wrongly earned ET GD +1 by
+  matching a *defaulted* 0–0 actual ET on a no-ET match — fixed; see the 2026-07-15
+  ET-gate changelog entry. The knockout FT-winner +3 is UNAFFECTED: it lives outside
+  the ET block and resolves the real match winner via `actualWinnerSide()`.) When ET
+  *was* played: exact ET **+5** (predicted ET total == actual ET total), ET GD **+1**
+  (predicted ET margin == actual ET margin — a correctly-predicted **level** ET earns
+  its own +1, *separate* from the FT-draw GD), ET winner **+3** (only if actual ET
+  decisive AND predicted ET winner side matches), ET scorers **+2/−1** (ET picks
+  against ET goals). A wrong ET winner ⇒ no ET +3 and no exact ET +5, but the ET GD
+  (if it matches) and ET scorer points are kept. ET totals **include** the FT goals.
 - **Penalty portion — ONLY when the user predicted a LEVEL ET AND the match actually
   ended ET level and went to a shoot-out** (`pen_winner_team_id` set): **+5** if the
   predicted shoot-out winner matches the actual one, else 0 (everything else kept).
@@ -1222,3 +1242,110 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   A won on pens → +3 not awarded, `winner_pts` 0); 52 = named nobody (level ET, no pen pick →
   `winner_pts` 0). The already-present decisive-FT cases (40/44/47) and all group regressions are
   unaffected. Now **52 cases, all pass**; `npm run build` clean. **Not deployed** (per task).
+- **2026-07-15 — Knockout winner rule GENERALISED AGAIN (THIRD mid-tournament change; see §2.10).**
+  The winner **+3** is now awarded whenever the team the user **NAMED** wins the match by **ANY
+  route — including a decisive 90-minute result**, not only when the tie went to ET/penalties.
+  Previously (the shipped second change) a draw-predictor got the +3 only if the match actually
+  reached ET or pens AND their named side won; a match decided in regulation paid draw-predictors
+  nothing because `finalWinnerSide()` returned null for a 90' result. **Engine + tests ONLY** — no
+  admin, schema, RLS, UI, recompute-script, quiz, outrights, leaderboard-view, or group-stage
+  changes. • **`lib/scoring.ts`:** **replaced** the old `finalWinnerSide()` helper with a new
+  **`actualWinnerSide(input)`** that returns the actual match winner side in strict priority: (1)
+  `pen_winner_team_id` if set → mapped to a side; else (2) the **ET total** if ET was actually
+  played (`et_score_a` AND `et_score_b` non-null AND unequal); else (3) the **FT score** if
+  decisive; else null. This DIFFERS from `finalWinnerSide()` (which defaulted a missing ET to 0–0
+  and ignored a decisive FT, returning null for a 90' result) by **falling through to the FT
+  score**. `finalWinnerSide()` had **no other dependents** — the ET/penalty scoring uses its own
+  inline `etA/etB/pen` resolution, not that helper — so it was removed outright rather than kept as
+  dead code. The knockout winner block now reads `if (knockout) { const namedSide =
+  namedWinnerSide(input); if (namedSide !== null && namedSide === actualWinnerSide(input)) winnerPts
+  = 3; }`. **`namedWinnerSide()` is UNCHANGED** (decisive-FT pred → FT winner; FT-draw pred →
+  decisive-ET winner, else pen pick, else null). `gotWinner` still derives from `winnerPts > 0`. •
+  **MUST-NOT-CHANGE, all verified intact:** the plain FT-winner path for a decisive-FT predictor
+  whose team won in 90' still gives a flat +3 (the block re-affirms the same side → never doubled to
+  6, never lowered — the block only ever SETS 3); FT exact/GD, ET exact/GD, ET scorers, penalty +5,
+  scorers, superstar, underdog, `used_2x`, and the FT-draw final-outcome contingency are all
+  untouched (the +3 is still independent of and never gated by the contingency); group stage is
+  untouched (the block is gated behind `isKnockout`). • **Tests (`scripts/test-scoring.ts`):** added
+  **4 cases (53–56)** — 53 = mm_2605 (FT-draw pred, named B via the pen pick, B won **0–2 in 90'** →
+  +3; total 4 incl. the incidental level-ET GD +1 since no ET was played so actual ET defaults 0–0);
+  54 = named A via a decisive-ET pick but the OTHER team won in 90' → winner 0, total 0; 55 = level
+  ET, NO pen pick, won in 90' → named nobody → winner 0 (total 1, the level-ET GD quirk); 56 =
+  decisive-FT pred 2–0 won cleanly 3–1 in 90' with no ET/pen data → +3 re-affirmed **not doubled**
+  (total 4). **NO existing case changed its expected values** — the second-change ET/pen cases
+  (23–25, 36, 37, 39, 46, 48–52) all involve matches that went to ET/pens (where `actualWinnerSide`
+  === the old `finalWinnerSide`), the decisive-FT cases (22, 40–47) and the synthetic FT-decisive
+  scorer-isolation cases (32–35, which carry ET data so `actualWinnerSide` resolves via the ET
+  priority to the non-named side) are unaffected, and all group regressions are untouched. Now **56
+  cases, all pass**; `npm run build` clean. **Not deployed** (per task).
+- **2026-07-15 — ET-track gated behind "extra time was ACTUALLY PLAYED" (leak fix; see §2.10).**
+  Fixed a scoring leak where a knockout match decided in **90 minutes** (no extra time) still
+  awarded **ET GD +1** to anyone who predicted an FT draw with a **level ET**. **Engine + tests
+  ONLY** — no admin, schema, RLS, UI, recompute-script, or group-stage changes; the winner **+3**
+  rule (all three changes) is untouched. • **Root cause:** the ET block in `lib/scoring.ts` was
+  gated on only `knockout && predictedFtDraw`; inside, `etA = etScoreA ?? 0` / `etB = etScoreB ??
+  0` default a **null** actual ET to **0–0**, so on a match with no ET a level-ET prediction
+  matched that defaulted margin and `etGdPts` became +1. (ET winner needs a decisive actual ET →
+  0; ET exact & pen are zeroed by the FT-draw final-outcome contingency; ET scorers have no ET
+  goals → 0. So **only `etGdPts` leaked**, +1 per affected prediction; no knockout prediction uses
+  `used_2x` — 2x is group-round-2-only — so it is exactly +1, never doubled.) • **Fix:** added an
+  `etWasPlayed` reality gate — `actualScoreA === actualScoreB && etScoreA != null && etScoreB !=
+  null` — so the ET/penalty block now runs only under `knockout && predictedFtDraw && etWasPlayed`.
+  A match won in 90' now scores **ZERO across every ET component + penalties for everyone**. The
+  knockout FT-winner +3 is outside this block and resolves the real winner via `actualWinnerSide()`
+  (which already handled a 90' result), so it is unaffected. • **Tests
+  (`scripts/test-scoring.ts`):** cases **53** (`etGdPts` 1→0, total 4→3) and **55** (`etGdPts` 1→0,
+  total 1→0) updated — the "level-ET quirk" they documented is the very leak now fixed. Cases
+  **32–35** (phase-strict scorer isolation) were **rebuilt on a realistic FT-draw actual (0–0 with
+  populated ET)** instead of the previous impossible decisive-FT-with-ET state (a match won in 90'
+  can't have ET goals); each now carries the unavoidable FT-GD +1 baseline (32→5, 33→3, 34→1,
+  35→3) and still proves a player picked in both phases pays only for its own phase's goals. Added
+  **3 guard cases (57–59):** 57 = FT-draw + level ET, won 1–0 in 90' → all ET components 0, winner
+  0, total 0; 58 = FT-draw + level ET + pen pick to A, A won 2–1 in 90' → ET all 0 but winner +3
+  (gate doesn't touch the winner rule), total 3; 59 = sanity — ET genuinely played (FT 1–1, ET 1–1,
+  pens A) still scores the full ro16 award (total 20). Now **59 cases, all pass**; `npm run build`
+  clean. • **Impact on live data:** a read-only audit found **33** existing `prediction_points`
+  rows currently inflated by +1 across 14 finished no-ET knockout matches (ids 73, 79, 80, 83, 85,
+  87, 90, 91, 92, 93, 94, 95, 98, 101). They are **not** corrected by this change — recomputing
+  those matches (admin "Save & compute", or a targeted run of the recompute script) would fix them.
+  **Not deployed** (per task).
+- **Third-place match added as the new home page; SF moved to its own `/sf` page behind the
+  hamburger menu; knockout scoring extended to cover third (see §2.10).** Mirrors the earlier
+  SF → `/sf` (was home) move — the FIFTH iteration of this pattern. **Prereq (done in Supabase):**
+  1 match inserted with `stage = 'third'` (France v England, id 103; existing stages: `'group'`,
+  `'ro32'`, `'ro16'`, `'qf'`, `'sf'`). third uses the **IDENTICAL** knockout scoring as
+  ro32/ro16/qf/sf (ET / penalties / final-outcome-contingent bonuses / superstar-anywhere / the
+  generalised "name the winner" +3 rule / the ET-reality-gate fix) — the only difference is the
+  displayed round label ("Third-place match"). • **Engine (`lib/scoring.ts`):** `isKnockout(stage)`
+  — the single source of truth for "is this a knockout?" (engine, admin recompute, lock action,
+  `MatchCard`, `ResultForm`, admin `MatchList`) — now returns true for `'ro32' || 'ro16' || 'qf' ||
+  'sf' || 'third'`; the internal `KnockoutOrGroup` type gained `'third'`. Group (`'group'`) scoring
+  byte-identical. `lib/types.ts`: `Stage = 'group' | 'ro32' | 'ro16' | 'qf' | 'sf' | 'third'`. •
+  **Recompute (`app/admin/actions.ts`):** unchanged in logic — `saveAndCompute` uses
+  `isKnockout(stage)` so third gets the ET/pen treatment automatically; `recomputeMatch` passes
+  `stage` straight into the engine. `revalidateAdmin` now also revalidates `/admin/sf`. • **New
+  user `/sf` page (`app/sf/page.tsx`):** the previous home-page SF rendering moved here **verbatim**
+  (same `MatchCard` experience, knockout prediction flow, superstar, the 1000-row chunked pagination
+  on players/predictions/points/goals, timezone display, reveal, finished collapsibles), filtered to
+  `stage='sf'`, with a "← Home" link at the top; `requireUser()`-gated, `force-dynamic`. • **Home
+  (`app/page.tsx`) = Third-place match:** same data-loading carried over verbatim but filtered to
+  `stage='third'`, heading "Third-place match", cards pass `stage="third"`; keeps the
+  `<ScoringRules/>` box. • **Hamburger menu (`HamburgerMenu.tsx`):** now has FIVE links — "SF
+  Matches" (→ `/sf`), "QF Matches" (→ `/qf`), "RO16 Matches" (→ `/ro16`), "RO32 Matches" (→ `/ro32`)
+  and "Group Stage Matches" (→ `/group-stage`); still far-left, behaviour otherwise unchanged. •
+  **`MatchCard.tsx`:** the `stage` prop type + the local `isKnockout` derivation gained `'third'`;
+  `knockoutLabel` now yields "Third-place match" for third. • **Admin:** main `/admin` now lists
+  **third** ("Third-place match") with nav links — "Outrights →", "Semi-finals →" (→ new
+  `app/admin/sf/page.tsx`, "← Third-place match" back), "Quarter-finals →" (→ `app/admin/qf/page.tsx`),
+  "RO16 Matches →" (→ `app/admin/ro16/page.tsx`), "RO32 Matches →" (→ `app/admin/ro32/page.tsx`) and
+  "Group Stage Matches →". The existing sub-pages' back-links (qf/ro16/ro32/group-stage) were
+  relabelled "← Third-place match". `AdminMatchList`'s per-stage round label gained "Third-place
+  match"; the `/admin/match/[id]` back-link is stage-aware for all six stages (third → `/admin`,
+  sf → `/admin/sf`). Admin stays `requireAdmin`-gated and IST. • **`ScoringRules.tsx`** knockout
+  heading generalised to "⚔ Knockouts (Third-place match, Semi-finals, Quarter-finals, Round of 16
+  & Round of 32)". • **Routing:** `lockPrediction` now revalidates `/sf` in addition to `/qf`,
+  `/ro16`, `/ro32`, `/group-stage` and `/`. • **Tests (`scripts/test-scoring.ts`):** added `'third'`
+  to the case `stage` type and **1 new third case (60)** duplicating an sf ET-winner case to prove
+  the identical knockout scoring. Now **60 cases, all pass** (no existing case changed). `npm run
+  build` clean (routes show `/`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`, `/admin`,
+  `/admin/sf`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`, `/admin/group-stage`). **Not deployed.**

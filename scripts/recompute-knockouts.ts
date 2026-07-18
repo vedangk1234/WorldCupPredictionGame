@@ -1,7 +1,12 @@
-// One-off maintenance script: recompute prediction_points for the finished
-// knockout matches that were LEVEL at full-time, under the (already-shipped)
-// knockout FT-winner rule change — see CLAUDE.md §2.10 and the 2026-07-12
-// changelog entry.
+// One-off maintenance script: recompute prediction_points for EVERY finished
+// knockout match, under the (now twice-changed) knockout scoring rules — the
+// generalised "name the winner, get the +3" FT-winner rule AND the ET-GD
+// "extra time was actually played" reality gate. See CLAUDE.md §2.10 and the
+// 2026-07-12 / 2026-07-15 changelog entries.
+//
+// Target matches are discovered DYNAMICALLY: every match with a knockout stage
+// (ro32, ro16, qf, sf, final) that is `finished = true`. Nothing is hardcoded,
+// so newly-finished knockout rounds are picked up automatically.
 //
 //   Dry-run (DEFAULT — reads only, writes NOTHING):
 //     npm run recompute:ko
@@ -33,9 +38,10 @@ import { computeRound3MatchIds } from "@/lib/round3";
 import { usernameToEmail } from "@/lib/username";
 import type { Stage } from "@/lib/types";
 
-// The 8 finished knockout matches that were level at FT (the ones the rule
-// change can affect). --match=<id> narrows to one of these.
-const TARGET_MATCH_IDS = [74, 75, 82, 86, 88, 96, 99, 100];
+// Knockout stages whose finished matches this script recomputes. Target ids are
+// discovered dynamically from the DB (finished = true AND stage in this set);
+// nothing is hardcoded. --match=<id> narrows to one of the discovered ids.
+const KNOCKOUT_STAGES = ["ro32", "ro16", "qf", "sf", "final"] as const;
 
 const PAGE = 1000;
 
@@ -383,20 +389,44 @@ async function main(): Promise<void> {
   const commit = args.includes("--commit");
   const dryRun = !commit; // DEFAULT: dry-run.
   const matchArg = args.find((a) => a.startsWith("--match="));
-  let matchIds = TARGET_MATCH_IDS;
+
+  console.log(`Mode: ${dryRun ? "DRY-RUN (no writes)" : "COMMIT (will upsert prediction_points)"}`);
+
+  const supabase = await makeClient();
+  const computedAt = new Date().toISOString();
+
+  // Discover the target ids: every FINISHED knockout match (stage in the set).
+  const finishedKnockouts = await paged<{ id: number }>((from, to) =>
+    supabase
+      .from("matches")
+      .select("id")
+      .in("stage", KNOCKOUT_STAGES as unknown as string[])
+      .eq("finished", true)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  const discoveredIds = finishedKnockouts.map((m) => m.id);
+
+  let matchIds = discoveredIds;
   if (matchArg) {
     const id = Number(matchArg.split("=")[1]);
-    if (!TARGET_MATCH_IDS.includes(id)) {
-      throw new Error(`--match=${id} is not one of the target ids ${TARGET_MATCH_IDS.join(", ")}.`);
+    if (!discoveredIds.includes(id)) {
+      throw new Error(
+        `--match=${id} is not a finished knockout match. Discovered: ${discoveredIds.join(", ") || "(none)"}.`,
+      );
     }
     matchIds = [id];
   }
 
-  console.log(`Mode: ${dryRun ? "DRY-RUN (no writes)" : "COMMIT (will upsert prediction_points)"}`);
-  console.log(`Target matches: ${matchIds.join(", ")}`);
+  console.log(
+    `Target matches (finished knockouts, stage in ${KNOCKOUT_STAGES.join("/")}): ` +
+      `${matchIds.join(", ") || "(none)"}`,
+  );
 
-  const supabase = await makeClient();
-  const computedAt = new Date().toISOString();
+  if (matchIds.length === 0) {
+    console.log("\nNo finished knockout matches found. Nothing to do.");
+    return;
+  }
 
   // Round-3 set (from ALL matches) + superstar ids + username lookup — loaded once, chunked.
   const allMatches = await paged<{

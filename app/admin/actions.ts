@@ -25,6 +25,7 @@ export interface SaveExtras {
 
 function revalidateAdmin(matchId: number) {
   revalidatePath("/admin");
+  revalidatePath("/admin/sf");
   revalidatePath("/admin/qf");
   revalidatePath("/admin/ro16");
   revalidatePath("/admin/ro32");

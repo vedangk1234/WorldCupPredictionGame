@@ -114,13 +114,15 @@ export default async function AdminMatchList({
   const knockout = isKnockout(stage);
   // Per-match round label for a knockout row's metadata line.
   const roundLabel =
-    stage === "sf"
-      ? "Semi-final"
-      : stage === "qf"
-        ? "Quarter-final"
-        : stage === "ro16"
-          ? "Round of 16"
-          : "Round of 32";
+    stage === "third"
+      ? "Third-place match"
+      : stage === "sf"
+        ? "Semi-final"
+        : stage === "qf"
+          ? "Quarter-final"
+          : stage === "ro16"
+            ? "Round of 16"
+            : "Round of 32";
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "40px 24px 80px" }}>

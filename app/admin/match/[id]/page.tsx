@@ -24,7 +24,7 @@ interface MatchDetail {
   score_a: number | null;
   score_b: number | null;
   finished: boolean;
-  stage: "group" | "ro32" | "ro16" | "qf" | "sf";
+  stage: "group" | "ro32" | "ro16" | "qf" | "sf" | "third";
   et_score_a: number | null;
   et_score_b: number | null;
   pen_winner_team_id: number | null;
@@ -102,26 +102,30 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
       <Link
         href={
-          match.stage === "sf"
+          match.stage === "third"
             ? "/admin"
-            : match.stage === "qf"
-              ? "/admin/qf"
-              : match.stage === "ro16"
-                ? "/admin/ro16"
-                : match.stage === "ro32"
-                  ? "/admin/ro32"
-                  : "/admin/group-stage"
+            : match.stage === "sf"
+              ? "/admin/sf"
+              : match.stage === "qf"
+                ? "/admin/qf"
+                : match.stage === "ro16"
+                  ? "/admin/ro16"
+                  : match.stage === "ro32"
+                    ? "/admin/ro32"
+                    : "/admin/group-stage"
         }
         style={{ color: "var(--chalk-dim)", fontSize: 13, textDecoration: "none" }}
       >
         ←{" "}
-        {match.stage === "sf"
-          ? "Semi-finals"
-          : match.stage === "qf"
-            ? "Quarter-finals"
-            : match.stage === "ro16"
-              ? "Round of 16"
-              : match.stage === "ro32"
+        {match.stage === "third"
+          ? "Third-place match"
+          : match.stage === "sf"
+            ? "Semi-finals"
+            : match.stage === "qf"
+              ? "Quarter-finals"
+              : match.stage === "ro16"
+                ? "Round of 16"
+                : match.stage === "ro32"
                 ? "Round of 32"
                 : "Group stage"}
       </Link>

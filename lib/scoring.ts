@@ -12,7 +12,7 @@
 //
 // STAGE behaviour:
 //   - 'group' → behaves EXACTLY as before. All et/pen fields are IGNORED.
-//   - 'ro32' / 'ro16' / 'qf' / 'sf' → KNOCKOUT stages, scored IDENTICALLY: FT scoring as in
+//   - 'ro32' / 'ro16' / 'qf' / 'sf' / 'third' → KNOCKOUT stages, scored IDENTICALLY: FT scoring as in
 //     group, PLUS an extra-time (ET) portion that only applies when the user
 //     PREDICTED an FT draw, PLUS a penalty portion when the user predicted a
 //     level ET and the match actually went to pens. Superstar applies on EVERY
@@ -28,17 +28,21 @@ export interface ActualGoal {
 }
 
 // A stage is a KNOCKOUT (ET / penalties / contingent bonuses / superstar-anywhere
-// all apply) when it's 'ro32', 'ro16', 'qf', OR 'sf'. Group fixtures are never
-// knockouts. Single source of truth — used by the engine and re-used by the admin
-// recompute, the lock action, and the UI so every "is this a knockout?" check stays
-// in sync.
+// all apply) when it's 'ro32', 'ro16', 'qf', 'sf', OR 'third'. Group fixtures are
+// never knockouts. Single source of truth — used by the engine and re-used by the
+// admin recompute, the lock action, and the UI so every "is this a knockout?" check
+// stays in sync.
 export function isKnockout(stage: KnockoutOrGroup): boolean {
   return (
-    stage === "ro32" || stage === "ro16" || stage === "qf" || stage === "sf"
+    stage === "ro32" ||
+    stage === "ro16" ||
+    stage === "qf" ||
+    stage === "sf" ||
+    stage === "third"
   );
 }
 
-type KnockoutOrGroup = "group" | "ro32" | "ro16" | "qf" | "sf";
+type KnockoutOrGroup = "group" | "ro32" | "ro16" | "qf" | "sf" | "third";
 
 export interface ScoringInput {
   stage: KnockoutOrGroup;
@@ -88,20 +92,41 @@ export interface ScoringResult {
 
 const sign = (n: number): number => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
-// The ultimate winning side ('A' | 'B') of a DECIDED knockout tie: penalties
-// decide first (map the pen winner's team id → side, the same id→side mapping the
-// penalty scoring relies on), otherwise the ET total decides. Returns null only if
-// somehow still level — a guard; a finished knockout should never hit this.
-function finalWinnerSide(input: ScoringInput): "A" | "B" | null {
+// The ultimate winning side ('A' | 'B') of a DECIDED knockout tie, by ANY route,
+// in strict priority (see CLAUDE.md §2.10):
+//   1. penalties decide first (map the pen winner's team id → side, the same
+//      id→side mapping the penalty scoring relies on);
+//   2. else the ET total, but ONLY if ET was actually PLAYED — both totals present
+//      (not null) AND unequal;
+//   3. else the FT score if it was decisive (won in 90').
+// Returns null only if genuinely level with no resolution — a guard; a finished
+// knockout should never hit this.
+//
+// NOTE: this DIFFERS from the previous `finalWinnerSide()` helper it replaces —
+// that one ignored a decisive FT (it defaulted a missing ET to 0–0 and returned
+// null for a match won in 90'). This helper falls through to the FT score, so a
+// knockout decided in regulation now yields a winning side. `finalWinnerSide()`
+// had no other dependents (the ET/penalty scoring uses its own inline etA/etB/pen
+// resolution, not this helper), so it was replaced outright.
+function actualWinnerSide(input: ScoringInput): "A" | "B" | null {
+  // 1. Penalties.
   if (input.penWinnerTeamId != null) {
     if (input.penWinnerTeamId === input.teamAId) return "A";
     if (input.penWinnerTeamId === input.teamBId) return "B";
     return null;
   }
-  const etA = input.etScoreA ?? 0;
-  const etB = input.etScoreB ?? 0;
-  if (etA > etB) return "A";
-  if (etB > etA) return "B";
+  // 2. Extra time — only when actually played (both totals present and unequal).
+  if (
+    input.etScoreA != null &&
+    input.etScoreB != null &&
+    input.etScoreA !== input.etScoreB
+  ) {
+    return input.etScoreA > input.etScoreB ? "A" : "B";
+  }
+  // 3. Full time, if decisive.
+  if (input.actualScoreA !== input.actualScoreB) {
+    return input.actualScoreA > input.actualScoreB ? "A" : "B";
+  }
   return null;
 }
 
@@ -111,7 +136,7 @@ function finalWinnerSide(input: ScoringInput): "A" | "B" | null {
 //   - predicted an FT DRAW → their ET winner side if they predicted a DECISIVE ET
 //     (predEtA !== predEtB); else (a LEVEL ET) their predicted penalty winner
 //     mapped to a side; null if neither an ET winner nor a pen pick was named.
-// Uses the same team-id → side mapping finalWinnerSide() relies on for the pen pick.
+// Uses the same team-id → side mapping actualWinnerSide() relies on for the pen pick.
 function namedWinnerSide(input: ScoringInput): "A" | "B" | null {
   if (input.predScoreA !== input.predScoreB) {
     return input.predScoreA > input.predScoreB ? "A" : "B";
@@ -165,24 +190,27 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
 
   // KNOCKOUT winner rule — "name the winner, get the +3" (see CLAUDE.md §2.10).
   // In ANY knockout, the winner +3 is awarded — exactly ONCE — when the team the
-  // user NAMED as the ultimate winner is the team that actually WON THE TIE, by any
-  // route. The named side comes from namedWinnerSide() (decisive-FT prediction →
-  // their FT winner; FT-draw prediction → their ET winner if they predicted a
-  // decisive ET, else their penalty pick). The actual tie winner comes from
-  // finalWinnerSide() (pens first, else the ET total). Note: an actual-decisive-FT
-  // knockout (won in 90') is already handled by the FT winner line above — there
-  // finalWinnerSide() returns null, so this block does not fire and never lowers a
-  // correct FT winner from 3.
+  // user NAMED as the ultimate winner is the team that actually WON THE MATCH, by
+  // ANY route (90 minutes, extra time, OR penalties). The named side comes from
+  // namedWinnerSide() (decisive-FT prediction → their FT winner; FT-draw prediction
+  // → their ET winner if they predicted a decisive ET, else their penalty pick).
+  // The actual match winner comes from actualWinnerSide() (pens first, else a played
+  // ET, else a decisive FT).
+  //
+  // For a decisive-FT predictor whose team won in 90', the plain FT winner line
+  // above already set winnerPts = 3; here namedSide === actualWinnerSide (both the FT
+  // winner) so this block re-affirms 3 — it never double-awards (winnerPts is a flat
+  // 3, never 6) and, as it only ever SETS 3, never lowers a correct FT winner.
   //
   // This +3 is INDEPENDENT of the FT-draw final-outcome contingency below — it is
   // NOT one of the four gated bonuses (FT exact / ET exact / ET winner / pen) and
   // is never zeroed by it. A predictor can have those exact bonuses forfeited for
   // getting the ending wrong yet still earn this +3 purely for naming the team that
-  // won the tie. Folds into winnerPts and sets gotWinner → counts toward
+  // won the match. Folds into winnerPts and sets gotWinner → counts toward
   // winners_count like any other winner point.
   if (knockout) {
     const namedSide = namedWinnerSide(input);
-    if (namedSide !== null && namedSide === finalWinnerSide(input)) {
+    if (namedSide !== null && namedSide === actualWinnerSide(input)) {
       winnerPts = 3;
     }
   }
@@ -233,10 +261,24 @@ export function scorePrediction(input: ScoringInput): ScoringResult {
   let etScorerPts = 0;
   let penPts = 0;
 
-  // The ET portion applies ONLY when the user predicted an FT draw — that is the
-  // signal that they expected the match to go beyond 90 minutes.
+  // The ET portion applies ONLY when BOTH:
+  //   (a) the user PREDICTED an FT draw — the signal they expected the match to go
+  //       beyond 90 minutes; AND
+  //   (b) extra time was ACTUALLY PLAYED — the match was LEVEL at full-time AND the
+  //       actual ET totals are populated (et_score_a/et_score_b non-null).
+  // A match decided in 90 minutes (no ET played) scores ZERO across EVERY ET
+  // component (ET exact / ET GD / ET winner / ET scorers) and penalties for
+  // EVERYONE, regardless of what they predicted — there was no extra time to score.
+  // Without gate (b), a level-ET prediction wrongly earned ET GD +1 by matching a
+  // DEFAULTED 0–0 actual ET on a no-ET match. The knockout FT-winner +3 above is
+  // UNAFFECTED — it lives outside this block and resolves the real match winner via
+  // actualWinnerSide() (which already handles a 90' result).
   const predictedFtDraw = input.predScoreA === input.predScoreB;
-  if (knockout && predictedFtDraw) {
+  const etWasPlayed =
+    input.actualScoreA === input.actualScoreB &&
+    input.etScoreA != null &&
+    input.etScoreB != null;
+  if (knockout && predictedFtDraw && etWasPlayed) {
     const etA = input.etScoreA ?? 0;
     const etB = input.etScoreB ?? 0;
     const predEtA = input.predEtA ?? 0;

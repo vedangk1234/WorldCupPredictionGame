@@ -93,10 +93,10 @@ interface Props {
   // The logged-in user's own display zone (profiles.timezone, default
   // "Asia/Kolkata"). Display only — the real lock instant is unchanged.
   userTimeZone: string;
-  // 'group' fixtures behave exactly as before; knockouts ('ro32'/'ro16'/'qf'/'sf')
+  // 'group' fixtures behave exactly as before; knockouts ('ro32'/'ro16'/'qf'/'sf'/'third')
   // unlock the knockout extra-time / penalty prediction flow (CLAUDE.md §2.10).
   // The knockout stages behave identically — only the displayed round label differs.
-  stage: "group" | "ro32" | "ro16" | "qf" | "sf";
+  stage: "group" | "ro32" | "ro16" | "qf" | "sf" | "third";
   teamA: CardTeam;
   teamB: CardTeam;
   underdog: CardTeam | null;
@@ -189,18 +189,24 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
-  // All knockout stages (ro32/ro16/qf/sf) use the identical ET/penalty flow. The
-  // label below is the only stage-specific difference.
+  // All knockout stages (ro32/ro16/qf/sf/third) use the identical ET/penalty flow.
+  // The label below is the only stage-specific difference.
   const isKnockout =
-    stage === "ro32" || stage === "ro16" || stage === "qf" || stage === "sf";
+    stage === "ro32" ||
+    stage === "ro16" ||
+    stage === "qf" ||
+    stage === "sf" ||
+    stage === "third";
   const knockoutLabel =
-    stage === "sf"
-      ? "Semi-final"
-      : stage === "qf"
-        ? "Quarter-final"
-        : stage === "ro16"
-          ? "Round of 16"
-          : "Round of 32";
+    stage === "third"
+      ? "Third-place match"
+      : stage === "sf"
+        ? "Semi-final"
+        : stage === "qf"
+          ? "Quarter-final"
+          : stage === "ro16"
+            ? "Round of 16"
+            : "Round of 32";
 
   // 2x eligibility (CLAUDE.md "2x tokens"): round-2 AND no underdog. A round-2
   // match WITH an underdog shows an explanatory note instead of the toggle;
