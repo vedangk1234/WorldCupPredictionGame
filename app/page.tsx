@@ -1,5 +1,4 @@
 import SiteHeader from "@/app/components/SiteHeader";
-import ScoringRules from "@/app/components/ScoringRules";
 import { requireUser } from "@/lib/auth";
 import MatchCard from "@/app/predictions/MatchCard";
 import type {
@@ -296,8 +295,6 @@ export default async function Home() {
     <>
       <SiteHeader />
       <main className="preds-layout">
-        <ScoringRules />
-
         <div className="stripe-26" style={{ borderRadius: 99, margin: "24px 0 18px", maxWidth: 120 }} />
         <p
           style={{
