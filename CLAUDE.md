@@ -1395,3 +1395,36 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   build` clean (routes show `/`, `/third`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`,
   `/admin`, `/admin/third`, `/admin/sf`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`,
   `/admin/group-stage`). **Not deployed.**
+- **World Cup Final visual redesign (home page = the Final; display only).** Restyled the
+  Final home page into a "World Cup Final" theme using the Spain (red `#E11D33` + gold
+  `#F4C430`) and Argentina (celeste `#75AADB` + white) flag colours. **No scoring, server
+  actions, data flow, DB, or component-API changes** — every existing prop, state, and the
+  `lockPrediction`/`writePrediction` flow are reused as-is; all match logic (score inputs bound
+  to team_a/team_b with alignment-on-save, scorer cap = scoreA+scoreB with per-position
+  `<optgroup>`s, superstar ±3 callout + ⚡2x indicator, Open lock two-step confirm +
+  unlocked-doesn't-count warning, Locked/Closed/Finished read-only + reveal list, underdog tag,
+  kickoff/close times, all copy) is untouched. • **Fonts:** added **Anton** (`--font-anton`,
+  `next/font/google`) in `app/layout.tsx` for the hero wordmark + scoreboard numerals; Noto Sans
+  (body) and Archivo (`--font-display`, other headings) unchanged. New `.final-anton` CSS class.
+  • **Emblem:** moved `2026_FIFA_World_Cup_emblem.svg.webp` (project root) → `public/wc26-emblem.webp`,
+  rendered via `next/image` top-right of the page main (`.final-emblem`, absolute, below the sticky
+  nav so it never covers Log out; scales down on mobile via `clamp`). • **`app/globals.css`:** added
+  a scoped Final theme block — a fixed diagonal flag-split backdrop (`.final-bg` with `.fb-es`/
+  `.fb-ar` clip-path halves, radial glows, an animated glowing gold seam `.fb-seam`, plus vignette +
+  top/bottom dark gradients for legibility), the hero (`.final-hero`, eyebrow pill with pulsing dot,
+  huge Anton `.final-title`, team rondels `.final-rondel.es/.ar`, `.final-vs`), the countdown cells
+  (`.final-cd-*`), and `.final-main` (z-indexed above the fixed backdrop). All animations respect the
+  existing `prefers-reduced-motion` reset. • **`app/components/FinalHero.tsx`** (new, `"use client"`):
+  eyebrow "FIFA WORLD CUP 2026", "FINAL" wordmark, Spain/Argentina rondels + "VS", and a **live
+  countdown** ticking each second to the real match `kickoff_at` (renders "—" pre-mount to avoid a
+  hydration mismatch). • **`app/page.tsx`:** data loading byte-identical (still
+  `.eq("stage","final")` + the 1000-row chunked pagination); the return now renders the `.final-bg`
+  backdrop, `<SiteHeader/>`, the emblem, `<FinalHero/>` (fed by the first Final match's teams +
+  kickoff), then the MatchCard list centred at ≤760px. Replaces the old plain eyebrow/h1. •
+  **`app/predictions/MatchCard.tsx`:** all new styling gated on **`finalTheme = stage === "final"`**
+  so every other stage is visually byte-identical. When final: a translucent blurred card surface
+  (`cardBase`), a team-tinted scoreboard **grid** (big square red/celeste `scoreBoxStyle(accent)`
+  boxes binding to the same `scoreA`/`scoreB` state — non-final stages keep the inline inputs), and a
+  full-width gold-gradient Anton **Lock** button ("🔒 Lock in Prediction") + gold-gradient confirm
+  button (`goldGradientBtn`). Fully responsive / mobile-first, ≥44px hit targets. `npm run build`
+  clean and all 61 scoring tests pass. **Not deployed.**
