@@ -308,7 +308,7 @@ export default async function Home() {
           FIFA WORLD CUP 2026 · KNOCKOUTS
         </p>
         <h1 className="display" style={{ fontSize: 38, lineHeight: 1.05, margin: "8px 0 16px" }}>
-          Final
+          FIFA WORLD CUP 2026 FINAL
         </h1>
 
         {matchErr && (
