@@ -58,10 +58,7 @@ export default function FinalHero({ teamAName, teamBName, kickoffAt }: Props) {
         FIFA World Cup 2026
       </div>
       <h1 className="final-anton final-title">Final</h1>
-      <p className="final-sub">
-        One match. One trophy. Lock your call before kickoff — the whole group sees it the moment you
-        do.
-      </p>
+      <p className="final-sub">One match. One trophy.</p>
 
       <div className="final-teams">
         <div className="final-team">
