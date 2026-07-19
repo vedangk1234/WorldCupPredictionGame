@@ -291,6 +291,7 @@ async function writePrediction(
   revalidatePath("/ro16");
   revalidatePath("/qf");
   revalidatePath("/sf");
+  revalidatePath("/third");
   revalidatePath("/");
   return {
     ok: true,

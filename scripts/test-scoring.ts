@@ -26,7 +26,7 @@ interface Expect {
 
 interface Case {
   num: number;
-  stage?: 'group' | 'ro32' | 'ro16' | 'qf' | 'sf' | 'third'; // default 'group'
+  stage?: 'group' | 'ro32' | 'ro16' | 'qf' | 'sf' | 'third' | 'final'; // default 'group'
   pred: [number, number];
   actual: [number, number];
   goals: Goal[];
@@ -354,6 +354,13 @@ const cases: Case[] = [
   // (mirrors 46) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + "name the winner" +3 (named A, A won) = 18.
   // Proves the knockout scoring fires identically on the Third-place match ('third').
   { num: 60, stage: 'third', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
+    predEt: [2, 1], etActual: [2, 1],
+    expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
+
+  // ===================== Knockout (final) — IDENTICAL rules to ro32 / ro16 / qf / sf / third =====================
+  // (mirrors 46/60) pred 1–1 → 2–1 ET, actual 1–1 FT & 2–1 ET → 15 + "name the winner" +3 (named A, A won) = 18.
+  // Proves the knockout scoring fires identically on the Final ('final').
+  { num: 61, stage: 'final', pred: [1, 1], actual: [1, 1], goals: [], picks: [], underdog: null,
     predEt: [2, 1], etActual: [2, 1],
     expect: { winnerPts: 3, gdPts: 1, exactPts: 5, scorerPts: 0, etWinnerPts: 3, etGdPts: 1, etExactPts: 5, etScorerPts: 0, penPts: 0, superstarPts: 0, totalPts: 18, correctScorers: 0 } },
 ];

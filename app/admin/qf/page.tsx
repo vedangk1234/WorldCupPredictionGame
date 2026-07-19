@@ -10,7 +10,7 @@ export default async function AdminQf() {
       stage="qf"
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
       title="Quarter-finals"
-      navLinks={[{ href: "/admin", label: "← Third-place match" }]}
+      navLinks={[{ href: "/admin", label: "← Final" }]}
     />
   );
 }

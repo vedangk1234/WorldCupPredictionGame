@@ -1349,3 +1349,49 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   the identical knockout scoring. Now **60 cases, all pass** (no existing case changed). `npm run
   build` clean (routes show `/`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`, `/admin`,
   `/admin/sf`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`, `/admin/group-stage`). **Not deployed.**
+- **Final added as the new home page; Third-place match moved to its own `/third` page behind the
+  hamburger menu; knockout scoring extended to cover final (see §2.10).** The SIXTH and final
+  iteration of the home-page-promotion pattern (mirrors Third-place → `/third` when SF was home).
+  **Prereq (done in Supabase):** 1 match inserted with `stage = 'final'` (Spain v Argentina, id
+  105; existing stages: `'group'`, `'ro32'`, `'ro16'`, `'qf'`, `'sf'`, `'third'`). final uses the
+  **IDENTICAL** knockout scoring as ro32/ro16/qf/sf/third (ET / penalties /
+  final-outcome-contingent bonuses / superstar-anywhere / the generalised "name the winner by any
+  route" +3 rule / the ET-reality-gate) — the only difference is the displayed round label
+  ("Final"). **NOTE:** the Third-place match (id 103) and the Final (id 105) kick off at the SAME
+  time and both stay OPEN simultaneously — making the Final the home page only MOVES the
+  Third-place match to `/third`, it never closes or hides it. • **Engine (`lib/scoring.ts`):**
+  `isKnockout(stage)` — the single source of truth for "is this a knockout?" (engine, admin
+  recompute, lock action, `MatchCard`, `ResultForm`, admin `MatchList`) — now returns true for
+  `'ro32' || 'ro16' || 'qf' || 'sf' || 'third' || 'final'`; the internal `KnockoutOrGroup` type
+  gained `'final'`. Group (`'group'`) scoring byte-identical. `lib/types.ts`: `Stage = 'group' |
+  'ro32' | 'ro16' | 'qf' | 'sf' | 'third' | 'final'`. • **Recompute (`app/admin/actions.ts`):**
+  unchanged in logic — `saveAndCompute` uses `isKnockout(stage)` so final gets the ET/pen treatment
+  automatically; `recomputeMatch` passes `stage` straight into the engine. `revalidateAdmin` now
+  also revalidates `/admin/third`. • **New user `/third` page (`app/third/page.tsx`):** the
+  previous home-page Third-place rendering moved here **verbatim** (same `MatchCard` experience,
+  knockout prediction flow, superstar, the 1000-row chunked pagination on
+  players/predictions/points/goals, timezone display, reveal, finished collapsibles), filtered to
+  `stage='third'`, with a "← Home" link at the top; `requireUser()`-gated, `force-dynamic`. •
+  **Home (`app/page.tsx`) = Final:** same data-loading carried over verbatim but filtered to
+  `stage='final'`, heading "Final", cards pass `stage="final"`; keeps the `<ScoringRules/>` box. •
+  **Hamburger menu (`HamburgerMenu.tsx`):** now has SIX links — "3rd-Place Match" (→ `/third`),
+  "SF Matches" (→ `/sf`), "QF Matches" (→ `/qf`), "RO16 Matches" (→ `/ro16`), "RO32 Matches" (→
+  `/ro32`) and "Group Stage Matches" (→ `/group-stage`); still far-left, behaviour otherwise
+  unchanged. • **`MatchCard.tsx`:** the `stage` prop type + the local `isKnockout` derivation
+  gained `'final'`; `knockoutLabel` now yields "Final" for final. • **Admin:** main `/admin` now
+  lists **final** ("Final") with nav links — "Outrights →", "Third-place match →" (→ new
+  `app/admin/third/page.tsx`, "← Final" back), "Semi-finals →" (→ `app/admin/sf/page.tsx`),
+  "Quarter-finals →" (→ `app/admin/qf/page.tsx`), "RO16 Matches →" (→ `app/admin/ro16/page.tsx`),
+  "RO32 Matches →" (→ `app/admin/ro32/page.tsx`) and "Group Stage Matches →". The existing
+  sub-pages' back-links (sf/qf/ro16/ro32/group-stage) were relabelled "← Final".
+  `AdminMatchList`'s per-stage round label gained "Final"; the `/admin/match/[id]` back-link is
+  stage-aware for all seven stages (final → `/admin`, third → `/admin/third`). Admin stays
+  `requireAdmin`-gated and IST. • **`ScoringRules.tsx`** knockout heading generalised to "⚔
+  Knockouts (Final, Third-place match, Semi-finals, Quarter-finals, Round of 16 & Round of 32)". •
+  **Routing:** `lockPrediction` now revalidates `/third` in addition to `/sf`, `/qf`, `/ro16`,
+  `/ro32`, `/group-stage` and `/`. • **Tests (`scripts/test-scoring.ts`):** added `'final'` to the
+  case `stage` type and **1 new final case (61)** duplicating an sf/third ET-winner case to prove
+  the identical knockout scoring. Now **61 cases, all pass** (no existing case changed). `npm run
+  build` clean (routes show `/`, `/third`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`,
+  `/admin`, `/admin/third`, `/admin/sf`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`,
+  `/admin/group-stage`). **Not deployed.**

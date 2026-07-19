@@ -10,7 +10,7 @@ export default async function AdminSf() {
       stage="sf"
       eyebrow="ADMIN · FIFA WORLD CUP 2026"
       title="Semi-finals"
-      navLinks={[{ href: "/admin", label: "← Third-place match" }]}
+      navLinks={[{ href: "/admin", label: "← Final" }]}
     />
   );
 }
