@@ -1,6 +1,4 @@
-import Image from "next/image";
 import SiteHeader from "@/app/components/SiteHeader";
-import FinalHero from "@/app/components/FinalHero";
 import { requireUser } from "@/lib/auth";
 import MatchCard from "@/app/predictions/MatchCard";
 import type {
@@ -293,42 +291,25 @@ export default async function Home() {
     return matchState(m, now, mine?.locked ?? false) === "open";
   })?.id;
 
-  // The Final match that feeds the hero (teams + kickoff for the countdown).
-  const heroMatch = matches.find((m) => m.team_a && m.team_b) ?? null;
-
   return (
     <>
-      {/* Fixed flag-split backdrop: Spain (red + gold) left, Argentina (celeste
-          + white) right, meeting at a glowing gold seam, over a stadium-night
-          base with a vignette so text stays legible. */}
-      <div className="final-bg" aria-hidden="true">
-        <div className="fb-es" />
-        <div className="fb-es-glow" />
-        <div className="fb-ar" />
-        <div className="fb-ar-glow" />
-        <div className="fb-seam" />
-        <div className="fb-vignette" />
-        <div className="fb-grad" />
-      </div>
-
       <SiteHeader />
-      <main className="final-main">
-        <Image
-          className="final-emblem"
-          src="/wc26-emblem.webp"
-          alt="FIFA World Cup 2026"
-          width={216}
-          height={216}
-          priority
-        />
-
-        {heroMatch && (
-          <FinalHero
-            teamAName={heroMatch.team_a!.name}
-            teamBName={heroMatch.team_b!.name}
-            kickoffAt={heroMatch.kickoff_at}
-          />
-        )}
+      <main className="preds-layout">
+        <div className="stripe-26" style={{ borderRadius: 99, margin: "24px 0 18px", maxWidth: 120 }} />
+        <p
+          style={{
+            color: "var(--gold-400)",
+            letterSpacing: "0.18em",
+            fontSize: 12,
+            fontWeight: 700,
+            margin: 0,
+          }}
+        >
+          FIFA WORLD CUP 2026 · KNOCKOUTS
+        </p>
+        <h1 className="display" style={{ fontSize: 38, lineHeight: 1.05, margin: "8px 0 16px" }}>
+          FIFA WORLD CUP 2026 FINAL
+        </h1>
 
         {matchErr && (
           <p style={{ color: "var(--m3)", marginTop: 20 }}>
@@ -341,18 +322,7 @@ export default async function Home() {
           </p>
         )}
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-            marginTop: 24,
-            maxWidth: 760,
-            marginLeft: "auto",
-            marginRight: "auto",
-            width: "100%",
-          }}
-        >
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 24 }}>
           {matches.map((m) => {
             if (!m.team_a || !m.team_b) return null;
             const mine = myPredByMatch.get(m.id);

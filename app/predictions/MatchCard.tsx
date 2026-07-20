@@ -189,13 +189,6 @@ export default function MatchCard(props: Props) {
   } = props;
 
   const editable = state === "open";
-  // The FINAL home page gets a bespoke "World Cup Final" look — a translucent
-  // card over the flag-split backdrop, team-tinted scoreboard boxes, and a gold
-  // Lock button. Purely visual, gated on the stage; every other stage renders
-  // exactly as before. Team A is tinted red (Spain), Team B celeste (Argentina).
-  const finalTheme = stage === "final";
-  const ACCENT_A = "#E11D33";
-  const ACCENT_B = "#75AADB";
   // All knockout stages (ro32/ro16/qf/sf/third/final) use the identical ET/penalty
   // flow. The label below is the only stage-specific difference.
   const isKnockout =
@@ -223,42 +216,6 @@ export default function MatchCard(props: Props) {
   // round-1/3 show no 2x UI at all.
   const twoxEligible = isRound2 && !underdog;
   const TOKENS_MAX = 3;
-
-  // ---- Final theme styling (visual only, gated on finalTheme) --------------
-  const cardBase: React.CSSProperties = finalTheme
-    ? {
-        background: "rgba(9,16,13,0.86)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 22,
-        padding: 18,
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-        boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
-      }
-    : card;
-  const goldGradientBtn: React.CSSProperties = finalTheme
-    ? {
-        background: "linear-gradient(90deg, #f3c969, #ffe08a, #f3c969)",
-        boxShadow: "0 10px 30px rgba(244,196,48,0.3)",
-      }
-    : {};
-  // A big, square, team-tinted scoreboard input (Final only). Binds to the same
-  // scoreA/scoreB state as the default inputs.
-  const scoreBoxStyle = (accent: string): React.CSSProperties => ({
-    width: "100%",
-    maxWidth: 130,
-    aspectRatio: "1 / 1",
-    minHeight: 88,
-    textAlign: "center",
-    fontFamily: "var(--font-anton), var(--font-display), system-ui, sans-serif",
-    fontSize: "clamp(44px, 12vw, 72px)",
-    color: "#fff",
-    background: `linear-gradient(180deg, ${accent}38, rgba(0,0,0,0.35))`,
-    border: `2px solid ${accent}80`,
-    borderRadius: 16,
-    outline: "none",
-    padding: 4,
-  });
 
   // Superstar note: shown on a group round-3 match OR ANY ro32 match where at
   // least one of the two squads contains a flagged superstar. Display only — the
@@ -503,7 +460,7 @@ export default function MatchCard(props: Props) {
     const ftGoals = goals.filter((g) => !g.isEt);
     const etGoals = goals.filter((g) => g.isEt);
     return (
-      <div style={{ ...cardBase, padding: 14, opacity: 0.74 }}>
+      <div style={{ ...card, padding: 14, opacity: 0.74 }}>
         {/* Result bar — collapsed by default; tap to reveal the full detail. */}
         <button
           type="button"
@@ -683,18 +640,10 @@ export default function MatchCard(props: Props) {
   return (
     <div
       style={{
-        ...cardBase,
+        ...card,
         opacity: dim ? 0.62 : 1,
-        borderColor: highlight
-          ? "rgba(31,164,99,0.6)"
-          : finalTheme
-            ? "rgba(255,255,255,0.10)"
-            : "var(--pitch-line)",
-        boxShadow: highlight
-          ? "0 0 0 1px rgba(31,164,99,0.35)"
-          : finalTheme
-            ? "0 30px 80px rgba(0,0,0,0.5)"
-            : "none",
+        borderColor: highlight ? "rgba(31,164,99,0.6)" : "var(--pitch-line)",
+        boxShadow: highlight ? "0 0 0 1px rgba(31,164,99,0.35)" : "none",
       }}
     >
       {/* Header */}
@@ -760,118 +709,40 @@ export default function MatchCard(props: Props) {
       {editable ? (
         /* ------------------------------ EDITABLE ------------------------------ */
         <div style={{ marginTop: 16 }}>
-          {/* Scores — Final gets a team-tinted scoreboard grid (Spain red / Argentina
-              celeste); every other stage keeps the compact inline inputs. Both bind
-              to the same scoreA/scoreB state, so alignment on save is preserved. */}
-          {finalTheme ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto 1fr",
-                alignItems: "center",
-                gap: "clamp(10px, 3vw, 26px)",
-              }}
-            >
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    marginBottom: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                    fontSize: 14,
-                    color: "#f4c9cf",
-                  }}
-                >
-                  {flag(teamA)}
-                  {teamA.name}
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  placeholder="–"
-                  value={scoreA}
-                  onChange={(e) => setScoreA(e.target.value)}
-                  aria-label={`${teamA.name} score`}
-                  style={scoreBoxStyle(ACCENT_A)}
-                />
-              </div>
-              <div
-                className="final-anton"
-                style={{ fontSize: "clamp(30px, 8vw, 52px)", color: "#6f7a75" }}
-              >
-                –
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    marginBottom: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                    fontSize: 14,
-                    color: "#cfe0f0",
-                  }}
-                >
-                  {flag(teamB)}
-                  {teamB.name}
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  placeholder="–"
-                  value={scoreB}
-                  onChange={(e) => setScoreB(e.target.value)}
-                  aria-label={`${teamB.name} score`}
-                  style={scoreBoxStyle(ACCENT_B)}
-                />
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                <span style={{ fontWeight: 600 }}>
-                  {flag(teamA)}
-                  {teamA.name}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  value={scoreA}
-                  onChange={(e) => setScoreA(e.target.value)}
-                  style={numInput}
-                />
-              </label>
-              <span className="display" style={{ fontSize: 20, color: "var(--chalk-dim)", paddingBottom: 8 }}>
-                –
+          {/* Scores */}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>
+                {flag(teamA)}
+                {teamA.name}
               </span>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                <span style={{ fontWeight: 600 }}>
-                  {flag(teamB)}
-                  {teamB.name}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  value={scoreB}
-                  onChange={(e) => setScoreB(e.target.value)}
-                  style={numInput}
-                />
-              </label>
-            </div>
-          )}
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={scoreA}
+                onChange={(e) => setScoreA(e.target.value)}
+                style={numInput}
+              />
+            </label>
+            <span className="display" style={{ fontSize: 20, color: "var(--chalk-dim)", paddingBottom: 8 }}>
+              –
+            </span>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>
+                {flag(teamB)}
+                {teamB.name}
+              </span>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={scoreB}
+                onChange={(e) => setScoreB(e.target.value)}
+                style={numInput}
+              />
+            </label>
+          </div>
 
           {/* Scorer picks */}
           <div style={{ marginTop: 18 }}>
@@ -1223,7 +1094,6 @@ export default function MatchCard(props: Props) {
                       fontWeight: 700,
                       cursor: pending ? "default" : "pointer",
                       opacity: pending ? 0.6 : 1,
-                      ...goldGradientBtn,
                     }}
                   >
                     {pending ? "Locking…" : "Yes, lock it in"}
@@ -1261,28 +1131,18 @@ export default function MatchCard(props: Props) {
                     setConfirmingLock(true);
                   }}
                   disabled={pending}
-                  className={finalTheme ? "final-anton" : undefined}
                   style={{
                     background: "var(--gold-400)",
                     color: "#1a1206",
                     border: "none",
-                    borderRadius: finalTheme ? 14 : 9,
-                    padding: finalTheme ? 16 : "10px 18px",
+                    borderRadius: 9,
+                    padding: "10px 18px",
                     fontWeight: 700,
                     cursor: pending ? "default" : "pointer",
                     opacity: pending ? 0.6 : 1,
-                    ...(finalTheme
-                      ? {
-                          width: "100%",
-                          fontSize: 20,
-                          letterSpacing: 1,
-                          textTransform: "uppercase" as const,
-                        }
-                      : {}),
-                    ...goldGradientBtn,
                   }}
                 >
-                  {finalTheme ? "🔒 Lock in Prediction" : "Lock in Prediction"}
+                  Lock in Prediction
                 </button>
               </div>
             )}
