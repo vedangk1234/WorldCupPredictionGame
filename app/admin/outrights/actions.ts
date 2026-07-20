@@ -158,7 +158,14 @@ export async function computeOutrightPoints(): Promise<ActionResult> {
     return { ok: true, message: "No locked predictions to score." };
   }
 
-  const rows = preds.map((p) => scoreOutright(p, resultData));
+  // scoreOutright() returns the per-question point columns + user_id, but NOT
+  // outright_prediction_id (the PK/FK the table requires). Attach it here per
+  // prediction so every inserted row carries both outright_prediction_id (the id
+  // of the prediction being scored) and user_id — scoreOutright is unchanged.
+  const rows = preds.map((p) => ({
+    outright_prediction_id: p.id,
+    ...scoreOutright(p, resultData),
+  }));
   const { error: insErr } = await supabase.from("outright_points").insert(rows);
   if (insErr) return { ok: false, message: `Write failed: ${insErr.message}` };
 
