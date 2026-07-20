@@ -285,13 +285,15 @@ async function writePrediction(
   }
 
   // Group fixtures live at /group-stage; ro32 cards at /ro32; ro16 at /ro16; the
-  // Quarter-finals at /qf; the Semi-finals on the home page.
+  // Quarter-finals at /qf; the Semi-finals at /sf; the Third-place match at
+  // /third; the Final at /final (the home page now shows the Tournament Stats).
   revalidatePath("/group-stage");
   revalidatePath("/ro32");
   revalidatePath("/ro16");
   revalidatePath("/qf");
   revalidatePath("/sf");
   revalidatePath("/third");
+  revalidatePath("/final");
   revalidatePath("/");
   return {
     ok: true,

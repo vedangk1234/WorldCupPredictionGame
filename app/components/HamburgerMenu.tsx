@@ -59,6 +59,22 @@ export default function HamburgerMenu() {
           }}
         >
           <Link
+            href="/final"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "block",
+              color: "var(--chalk)",
+              fontWeight: 600,
+              textDecoration: "none",
+              padding: "9px 12px",
+              borderRadius: 7,
+              fontSize: 14.5,
+            }}
+          >
+            Final
+          </Link>
+          <Link
             href="/third"
             role="menuitem"
             onClick={() => setOpen(false)}

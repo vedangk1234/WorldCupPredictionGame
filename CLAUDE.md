@@ -1395,3 +1395,36 @@ the match, runs this function, and upserts `prediction_points`. Recomputation is
   build` clean (routes show `/`, `/third`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`,
   `/admin`, `/admin/third`, `/admin/sf`, `/admin/qf`, `/admin/ro16`, `/admin/ro32`,
   `/admin/group-stage`). **Not deployed.**
+- **Tournament Stats is now the HOME page; the Final moved to its own `/final` page behind the
+  hamburger menu (the tournament is over, so stats is the centrepiece).** Routing + a new stats
+  component only — **no schema, scoring-engine, or Final-match behaviour changes** (all stats come
+  from pre-built Supabase views). • **PART 1 (move Final → `/final`):** created `app/final/page.tsx`
+  as a **verbatim** carry-over of the previous home-page Final rendering (same `.eq("stage","final")`
+  data loading + the 1000-row chunked pagination on players/predictions/prediction_points/match_goals,
+  same `MatchCard` experience with `stage="final"`, knockout ET/pen flow, superstar, reveal, finished
+  collapsibles, per-user timezone), with a "← Home" link at the top; `requireUser()`-gated,
+  `force-dynamic`, heading stays "Final". It is the PLAIN version — no `.final-*` theme / FinalHero /
+  Anton font (that was reverted earlier). `HamburgerMenu.tsx` gained a "Final" link (→ `/final`) as
+  the FIRST item, above "3rd-Place Match", "SF Matches", "QF Matches", "RO16 Matches", "RO32 Matches",
+  "Group Stage Matches". `lockPrediction` (`app/predictions/actions.ts`) now also revalidates
+  `/final` (alongside `/third`, `/sf`, `/qf`, `/ro16`, `/ro32`, `/group-stage`, `/`). Admin is
+  unchanged — the Final admin still lives at `/admin` and its back-links (→ `/admin`) were never tied
+  to the user home, so nothing needed adjusting. • **PART 2 (home = Tournament Stats):** `app/page.tsx`
+  is now a thin `force-dynamic`, `requireUser()`-gated server component rendering
+  `<TournamentStats/>` inside the standard `preds-layout` wrapper. New
+  `app/components/TournamentStats.tsx` (server) loads every stats view in parallel (`Promise.all`) and
+  presents 19 cards under "📊 Tournament in Numbers": a full-width headline band (`stats_headline`),
+  most/fewest predictions + perfect attendance + champion-of-exacts + sharpest predictor (min-20 via
+  `MIN_ACCURACY_MATCHES`) + cold takes + draw-caller + superstar gambler + optimist/pessimist (all
+  sliced in JS from a single `stats_per_user` read), the ONE chart — predictions-per-day CSS bars
+  (`stats_per_day`), longest winner streak (`stats_winner_streak`), biggest/worst single-match haul
+  (`stats_match_hauls`, DB `.order(total_pts).limit(3)`, ⚡2x tag), most-predicted scoreline
+  (`stats_top_scorelines`), Golden Boy (`stats_top_players`, `.order(times_backed).limit(10)`),
+  easiest-vs-hardest (`stats_match_difficulty` read twice), most contrarian call
+  (`stats_contrarian_exacts`, `.order(others_with_same_exact).limit(8)`, highlights the ONLY-one
+  rows), and outright specials (`stats_outright_specials` + `stats_outright_rarity`). Dependency-free
+  (no chart lib), reuses the existing design tokens (pitch/gold, tabular numerals, stripe-26),
+  responsive `auto-fit minmax(280px,1fr)` grid (1 col mobile → 2–3 desktop, wide cards span full
+  width). Every view is read with `select("*")` and every field accessed defensively so a
+  missing/empty view degrades to "—" instead of breaking; all divisions guarded. `npm run build`
+  clean (routes show `/` + `/final`) and all 61 scoring tests pass. **Not deployed.**
