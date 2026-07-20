@@ -164,23 +164,31 @@ export default async function TournamentStats() {
     .slice(0, 5);
 
   // ── Outright specials ──────────────────────────────────────────────────────
+  // The per-category pick COUNTS live on stats_outright_rarity (one wide row of
+  // got_*_n columns), not on stats_outright_specials (one row per user).
+  const rarity = (outrightRarity[0] ?? null) as Row | null;
   const champWinners = outrightSpecials.filter((r) => truthy(r.got_champion));
-  const champN = num(outrightSpecials[0]?.got_champion_n) ?? champWinners.length;
+  const champN = num(rarity?.got_champion_n) ?? champWinners.length;
   const bootWinners = outrightSpecials.filter((r) => truthy(r.got_boot_goals));
-  const bootN = num(outrightSpecials[0]?.got_boot_goals_n) ?? bootWinners.length;
-  const ballN = num(outrightSpecials[0]?.got_ball_n) ?? 0;
+  const bootN = num(rarity?.got_boot_goals_n) ?? bootWinners.length;
+  const ballN = num(rarity?.got_ball_n) ?? 0;
 
-  // "Lonely correct": the correct outright category with the fewest (>0) pickers.
-  const rarityRows = outrightRarity
-    .map((r) => ({
-      label: str(r.category) ?? str(r.label) ?? str(r.name) ?? null,
-      count: num(r.n) ?? num(r.pickers) ?? num(r.count) ?? null,
-      who: str(r.usernames) ?? str(r.username) ?? null,
-    }))
-    .filter((r) => r.label && r.count !== null && (r.count ?? 0) > 0) as {
+  // "Lonely correct": the correct outright category with the fewest (>0) pickers,
+  // built from the rarity row's got_*_n counts.
+  const rarityRows = (rarity
+    ? [
+        { label: "the champion", count: num(rarity.got_champion_n) },
+        { label: "the runner-up", count: num(rarity.got_runner_up_n) },
+        { label: "third place", count: num(rarity.got_third_n) },
+        { label: "the Golden Boot winner", count: num(rarity.got_boot_n) },
+        { label: "the Golden Glove winner", count: num(rarity.got_glove_n) },
+        { label: "the exact Boot goals", count: num(rarity.got_boot_goals_n) },
+        { label: "the Golden Ball", count: num(rarity.got_ball_n) },
+      ]
+    : []
+  ).filter((r) => r.count !== null && (r.count ?? 0) > 0) as {
     label: string;
     count: number;
-    who: string | null;
   }[];
   const lonely =
     rarityRows.length > 0
@@ -285,7 +293,7 @@ export default async function TournamentStats() {
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
                 <span className="display tnum" style={{ fontSize: 40, color: "var(--gold-300)", fontWeight: 800 }}>
-                  {scoreLine(scorelines[0])}
+                  {str(scorelines[0].scoreline) ?? scoreLine(scorelines[0])}
                 </span>
                 <span className="tnum" style={{ color: "var(--chalk-dim)", fontSize: 13 }}>
                   ×{num(scorelines[0].times_predicted) ?? 0}
@@ -294,7 +302,7 @@ export default async function TournamentStats() {
               <ul style={plainList}>
                 {scorelines.slice(1).map((r, i) => (
                   <li key={i} style={nameRow}>
-                    <span className="tnum" style={{ fontWeight: 600 }}>{scoreLine(r)}</span>
+                    <span className="tnum" style={{ fontWeight: 600 }}>{str(r.scoreline) ?? scoreLine(r)}</span>
                     <span className="tnum" style={{ color: "var(--chalk-dim)" }}>
                       ×{num(r.times_predicted) ?? 0}
                     </span>
@@ -313,7 +321,12 @@ export default async function TournamentStats() {
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
                 <span className="display" style={{ fontSize: 22, fontWeight: 800 }}>
-                  {str(topPlayers[0].player_name) ?? pName(topPlayers[0])}
+                  {str(topPlayers[0].player) ?? "Player"}
+                  {str(topPlayers[0].team) && (
+                    <span style={{ fontSize: 13, color: "var(--chalk-dim)", fontWeight: 600 }}>
+                      {" "}— {str(topPlayers[0].team)}
+                    </span>
+                  )}
                 </span>
                 <span className="tnum" style={{ color: "var(--gold-300)", fontWeight: 700 }}>
                   {num(topPlayers[0].times_backed) ?? 0}
@@ -324,7 +337,10 @@ export default async function TournamentStats() {
                   <li key={i} style={nameRow}>
                     <span>
                       <span style={{ color: "var(--chalk-dim)", fontWeight: 700 }}>{i + 2}. </span>
-                      {str(r.player_name) ?? pName(r)}
+                      {str(r.player) ?? "Player"}
+                      {str(r.team) && (
+                        <span style={{ color: "var(--chalk-dim)" }}> — {str(r.team)}</span>
+                      )}
                     </span>
                     <span className="tnum" style={{ color: "var(--chalk-dim)" }}>
                       {num(r.times_backed) ?? 0}
@@ -446,7 +462,6 @@ export default async function TournamentStats() {
                 <p style={miniLabel}>🎯 Lonely correct</p>
                 <p style={{ margin: "3px 0 0", fontSize: 13.5, color: "var(--chalk)" }}>
                   Only {lonely.count} nailed {lonely.label}
-                  {lonely.who ? `: ${lonely.who}` : ""}
                 </p>
               </div>
             )}
